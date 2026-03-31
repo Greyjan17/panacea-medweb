@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>PANACEA MEDWEB</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.12.7/Recharts.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #F5F9FF; color: #2D3748; }
+    input, select, textarea, button { font-family: inherit; }
+    ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: #F7FAFC; } ::-webkit-scrollbar-thumb { background: #CBD5E0; border-radius: 3px; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useRef, useEffect, useCallback, useMemo, memo } = React;
+const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ReferenceLine, ResponsiveContainer } = Recharts;
+
+// ── Supabase ──────────────────────────────────────────────────
+const SUPA_URL = "https://xknursfrqomenfvikfdw.supabase.co";
+const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhrbnVyc2ZycW9tZW5mdmlrZmR3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4MjY3MjUsImV4cCI6MjA5MDQwMjcyNX0.AyyOqdot5s7DCnXZYvLQJgDqIwBCoQaaLTgKoPi303A";
+const SH = { "Content-Type":"application/json","apikey":SUPA_KEY,"Authorization":`Bearer ${SUPA_KEY}` };
+
+// ── Paleta ────────────────────────────────────────────────────
+const C = {
+  bg:"#F5F9FF",white:"#FFFFFF",
+  blue:"#4A90D9",blueLight:"#E8F2FF",
+  teal:"#38B2AC",tealLight:"#E6FFFA",
+  green:"#48BB78",greenLight:"#F0FFF4",
+  amber:"#F6AD55",amberLight:"#FFFAF0",
+  red:"#FC8181",redLight:"#FFF5F5",
+  purple:"#9F7AEA",purpleLight:"#FAF5FF",
+  gray:"#718096",grayLight:"#F7FAFC",
+  border:"#E2E8F0",text:"#2D3748",textSoft:"#718096",
+};
+
+// ── Helpers de color ──────────────────────────────────────────
+const riskColor = l => l==="Alto"||l==="Rojo"?C.red:l==="Moderado"||l==="Amarillo"?C.amber:l==="Bajo"||l==="Verde"?C.green:C.border;
+const riskBg    = l => l==="Alto"||l==="Rojo"?C.redLight:l==="Moderado"||l==="Amarillo"?C.amberLight:l==="Bajo"||l==="Verde"?C.greenLight:C.grayLight;
+
+const PARAM_RANGES = {
+  imc:              {min:18.5,max:24.9},
+  pa_sistolica:     {min:90,  max:130 },
+  pa_diastolica:    {min:60,  max:85  },
+  colesterol_total: {min:0,   max:200 },
+  hdl:              {min:40,  max:999, inv:true},
+  ldl:              {min:0,   max:130 },
+  trigliceridos:    {min:0,   max:150 },
+  glucosa_ayunas:   {min:70,  max:100 },
+  hba1c:            {min:0,   max:5.7 },
+  acido_urico:      {min:2.4, max:7.0 },
+  creatinina:       {min:0.5, max:1.2 },
+  pa:               {min:90,  max:140, parse:v=>parseInt(v?.split("/")[0])},
+  fc:               {min:60,  max:100 },
+  fr:               {min:12,  max:20  },
+  temp:             {min:36,  max:37.5},
+};
+
+const paramStatus = (key,val) => {
+  if(!val) return {color:C.border,bg:C.grayLight};
+  const p = PARAM_RANGES[key]; if(!p) return {color:C.border,bg:C.grayLight};
+  const n = p.parse?p.parse(val):parseFloat(val); if(isNaN(n)) return {color:C.border,bg:C.grayLight};
+  if(p.inv){const c=n<p.min?C.red:C.green;return{color:c,bg:c+"18"};}
+  const c=n>p.max?C.red:n<p.min?C.blue:C.green;
+  return{color:c,bg:c+"18"};
+};
+
+// ── Cálculos ──────────────────────────────────────────────────
+const calcAtero = (ct,hdl,ldl,tg) => {
+  const r={};
+  if(ct&&hdl&&hdl>0){r.ct_hdl=(ct/hdl).toFixed(2);r.ct_hdl_riesgo=ct/hdl>5?"Alto":ct/hdl>3.5?"Moderado":"Bajo";}
+  if(ldl&&hdl&&hdl>0){r.ldl_hdl=(ldl/hdl).toFixed(2);r.ldl_hdl_riesgo=ldl/hdl>3.5?"Alto":ldl/hdl>2.5?"Moderado":"Bajo";}
+  if(tg&&hdl&&hdl>0){r.tg_hdl=(tg/hdl).toFixed(2);r.tg_hdl_riesgo=tg/hdl>3.8?"Alto":tg/hdl>2?"Moderado":"Bajo";}
+  r.global=(!r.ct_hdl_riesgo&&!r.ldl_hdl_riesgo&&!r.tg_hdl_riesgo)?null
+    :[r.ct_hdl_riesgo,r.ldl_hdl_riesgo,r.tg_hdl_riesgo].includes("Alto")?"Alto"
+    :[r.ct_hdl_riesgo,r.ldl_hdl_riesgo,r.tg_hdl_riesgo].includes("Moderado")?"Moderado":"Bajo";
+  return r;
+};
+
+const calcSM = (row,sexo="M") => {
+  const tg=parseFloat(row.trigliceridos),hdl=parseFloat(row.hdl),gluc=parseFloat(row.glucosa_ayunas);
+  const pas=parseFloat(row.pa_sistolica),pad=parseFloat(row.pa_diastolica),ca=parseFloat(row.circunferencia_abdominal);
+  const criterios={
+    ca:!isNaN(ca)?(sexo==="M"?ca>=90:ca>=80):null,
+    tg:!isNaN(tg)?tg>=150:null,
+    hdl:!isNaN(hdl)?(sexo==="M"?hdl<40:hdl<50):null,
+    pa:(!isNaN(pas)&&!isNaN(pad))?(pas>=130||pad>=85):null,
+    gluc:!isNaN(gluc)?gluc>=100:null,
+  };
+  const positivos=Object.values(criterios).filter(v=>v===true).length;
+  const otros=[criterios.tg,criterios.hdl,criterios.pa,criterios.gluc].filter(v=>v===true).length;
+  let dx=null;
+  if(criterios.ca!==null){
+    if(criterios.ca&&otros>=2)dx="Síndrome Metabólico ✓";
+    else if(criterios.ca&&otros===1)dx="Riesgo SM (CA + 1 criterio)";
+    else if(criterios.ca)dx="Obesidad central sin SM";
+    else dx="Sin SM (CA normal)";
+  }else dx=positivos>=3?"Posible SM (sin CA)":"Sin criterios suficientes";
+  return{criterios,positivos,dx,caPos:criterios.ca===true,otros};
+};
+
+const calcSemaforo = row => {
+  let a=0;
+  if(row.imc>30)a+=2;else if(row.imc>25)a++;
+  if(row.pa_sistolica>140||row.pa_diastolica>90)a+=2;else if(row.pa_sistolica>130)a++;
+  if(row.colesterol_total>240)a+=2;else if(row.colesterol_total>200)a++;
+  if(row.hdl<40)a+=2;
+  if(row.ldl>160)a+=2;else if(row.ldl>130)a++;
+  if(row.trigliceridos>500)a+=3;else if(row.trigliceridos>200)a+=2;else if(row.trigliceridos>150)a++;
+  if(row.glucosa_ayunas>126)a+=3;else if(row.glucosa_ayunas>100)a++;
+  if(row.hba1c>6.5)a+=3;else if(row.hba1c>5.7)a++;
+  if(row.acido_urico>7)a++;
+  return a===0?"Verde":a<=3?"Amarillo":"Rojo";
+};
+
+const tend = (a,b) => {
+  if(!a||!b)return null;
+  const d=((a-b)/b*100).toFixed(1);
+  if(Math.abs(d)<2)return{icon:"→",color:C.gray,d};
+  return a>b?{icon:"↑",color:C.red,d:`+${d}`}:{icon:"↓",color:C.green,d};
+};
+
+// ── Constantes ────────────────────────────────────────────────
+const PARAMS = {
+  imc:              {label:"IMC",          unit:"kg/m²", color:"#4A90D9"},
+  pa_sistolica:     {label:"PA Sist.",     unit:"mmHg",  color:"#E53E3E"},
+  pa_diastolica:    {label:"PA Diast.",    unit:"mmHg",  color:"#FC8181"},
+  colesterol_total: {label:"Colesterol",   unit:"mg/dL", color:"#805AD5"},
+  hdl:              {label:"HDL",          unit:"mg/dL", color:"#38B2AC",inv:true},
+  ldl:              {label:"LDL",          unit:"mg/dL", color:"#9F7AEA"},
+  trigliceridos:    {label:"Triglicéridos",unit:"mg/dL", color:"#F6AD55"},
+  glucosa_ayunas:   {label:"Glucosa",      unit:"mg/dL", color:"#ED8936"},
+  hba1c:            {label:"HbA1c",        unit:"%",     color:"#DD6B20"},
+  acido_urico:      {label:"Ác. Úrico",   unit:"mg/dL", color:"#48BB78"},
+  creatinina:       {label:"Creatinina",   unit:"mg/dL", color:"#2F855A"},
+};
+
+const GRUPOS_RIESGO = [
+  {id:"ruido",         label:"Ruido",       icon:"🔊",keywords:["ruido","acústico","sonido"],                                           color:"#F6AD55"},
+  {id:"quimico",       label:"Químico",     icon:"⚗️",keywords:["químico","quimico","solvente","plomo","polvo","humo","gas","vapores"], color:"#9F7AEA"},
+  {id:"ergonomico",    label:"Ergonómico",  icon:"🦴",keywords:["ergon","lumbar","postural","carga","vibración","vibracion"],           color:"#38B2AC"},
+  {id:"psicosocial",   label:"Psicosocial", icon:"🧠",keywords:["estrés","estres","psicosocial","turno","nocturno","ansiedad"],         color:"#48BB78"},
+  {id:"biologico",     label:"Biológico",   icon:"🦠",keywords:["biológico","biologico","infeccioso","bacteria","sangre","fluido"],     color:"#FC8181"},
+  {id:"fisico",        label:"Físico",      icon:"☀️",keywords:["temperatura","calor","frío","frio","radiación","radiacion","UV"],      color:"#ED8936"},
+  {id:"sin_exposicion",label:"Sin exposición",icon:"📋",keywords:[],                                                                   color:"#718096"},
+];
+const clasificarGrupoRiesgo = (exp="") => {
+  if(!exp.trim())return"sin_exposicion";
+  const e=exp.toLowerCase();
+  return GRUPOS_RIESGO.find(g=>g.keywords.some(k=>e.includes(k)))?.id??"sin_exposicion";
+};
+
+const CIE10=["J00 - Rinofaringitis aguda","J06.9 - Infección aguda vías resp.","A09 - Gastroenteritis","K29.7 - Gastritis","M54.5 - Lumbago","M54.2 - Cervicalgia","M79.1 - Mialgia","J45.9 - Asma","I10 - Hipertensión esencial","E11 - DM tipo 2","F41.1 - Ansiedad generalizada","F32.9 - Episodio depresivo","Z57.0 - Exposición ocupacional ruido","Z57.5 - Exposición tóxicos","Z57.2 - Trabajo con vibraciones"];
+const ESPECIALIDADES=["Cardiología","Neumología","Gastroenterología","Neurología","Ortopedia/Traumatología","Dermatología","Oftalmología","Otorrinolaringología","Psiquiatría","Endocrinología","Urología","Ginecología","Medicina Interna","Cirugía General"];
+
+const FIRMA_SVG=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 80" width="300" height="80"><rect width="300" height="80" fill="none"/><path d="M20,60 Q40,20 60,45 Q80,65 100,30 Q120,10 140,40 Q160,60 180,35 Q200,15 220,45 Q240,65 260,40 Q275,25 285,45" stroke="#1a3a5c" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M25,65 Q60,55 100,62 Q140,68 180,60 Q220,52 260,58" stroke="#1a3a5c" stroke-width="1" fill="none" stroke-dasharray="3,2" opacity="0.4"/></svg>`;
+const FIRMA_B64=`data:image/svg+xml;base64,${btoa(FIRMA_SVG)}`;
+
+// ── Supabase helpers ──────────────────────────────────────────
+const mapRow = row => ({
+  id:row.id,fecha:row.fecha,
+  paciente:     row.paciente     ||{nombre:"",dni:"",edad:"",sexo:"M",empresa:"",cargo:""},
+  anamnesis:    row.anamnesis    ||{motivo:"",tEvol:"",sintomas:"",aiText:""},
+  antOcup:      row.ant_ocup     ||{exposiciones:"",tiempo:"",epps:"",aiText:""},
+  exFisico:     row.ex_fisico    ||{pa:"",fc:"",fr:"",temp:"",peso:"",talla:"",hallazgos:"",aiText:""},
+  laboratorio:  row.laboratorio  ||{aiText:"",resumen:""},
+  diagnostico:  row.diagnostico  ||{cie10:"",aiText:""},
+  plan:         row.plan         ||{indicaciones:"",aiText:""},
+  aptitud:      row.aptitud      ||{resultado:"Apto",restricciones:"",aiText:""},
+  interconsultas:row.interconsultas||[],
+  estado:row.estado||"borrador",fromEnfermeria:row.from_enfermeria||false,
+});
+
+async function dbGetHistorial(){
+  const r=await fetch(`${SUPA_URL}/rest/v1/medweb_historial?order=updated_at.desc`,{headers:SH});
+  if(!r.ok)return null;return(await r.json()).map(mapRow);
+}
+async function dbUpsertHC(hc){
+  const row={id:hc.id,fecha:hc.fecha,paciente:hc.paciente,anamnesis:hc.anamnesis,ant_ocup:hc.antOcup,ex_fisico:hc.exFisico,laboratorio:hc.laboratorio,diagnostico:hc.diagnostico,plan:hc.plan,aptitud:hc.aptitud,interconsultas:hc.interconsultas,estado:hc.estado,from_enfermeria:hc.fromEnfermeria,updated_at:new Date().toISOString()};
+  return(await fetch(`${SUPA_URL}/rest/v1/medweb_historial`,{method:"POST",headers:{...SH,"Prefer":"resolution=merge-duplicates"},body:JSON.stringify(row)})).ok;
+}
+async function dbDeleteHC(id){return(await fetch(`${SUPA_URL}/rest/v1/medweb_historial?id=eq.${id}`,{method:"DELETE",headers:SH})).ok;}
+async function supaGetPendientes(){const r=await fetch(`${SUPA_URL}/rest/v1/enfermeria_registros?estado=eq.pendiente&order=created_at.desc`,{headers:SH});return r.ok?r.json():[];}
+async function supaMarkAtendido(id){await fetch(`${SUPA_URL}/rest/v1/enfermeria_registros?id=eq.${id}`,{method:"PATCH",headers:{...SH,"Prefer":"return=minimal"},body:JSON.stringify({estado:"atendido"})});}
+async function dbGetMetabolicoByDni(dni){const r=await fetch(`${SUPA_URL}/rest/v1/medweb_metabolico?paciente_dni=eq.${dni}&order=fecha.asc`,{headers:SH});return r.ok?r.json():[];}
+async function dbUpsertMetabolico(row){return(await fetch(`${SUPA_URL}/rest/v1/medweb_metabolico`,{method:"POST",headers:{...SH,"Prefer":"resolution=merge-duplicates"},body:JSON.stringify({...row,updated_at:new Date().toISOString()})})).ok;}
+async function dbDeleteMetabolico(id){return(await fetch(`${SUPA_URL}/rest/v1/medweb_metabolico?id=eq.${id}`,{method:"DELETE",headers:SH})).ok;}
+
+// ── Claude API ────────────────────────────────────────────────
+async function callClaude(prompt,web=false){
+  const body={model:"claude-sonnet-4-20250514",max_tokens:1000,messages:[{role:"user",content:prompt}]};
+  if(web)body.tools=[{type:"web_search_20250305",name:"web_search"}];
+  const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  const d=await r.json();return d.content.filter(b=>b.type==="text").map(b=>b.text).join("\n");
+}
+async function readB64(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(",")[1]);r.onerror=rej;r.readAsDataURL(file);});}
+async function callClaudePDF(b64,prompt){
+  const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,messages:[{role:"user",content:[{type:"document",source:{type:"base64",media_type:"application/pdf",data:b64}},{type:"text",text:prompt}]}]})});
+  const d=await r.json();return d.content.filter(b=>b.type==="text").map(b=>b.text).join("\n");
+}
+
+// ── Factories ─────────────────────────────────────────────────
+const emptyHC=()=>({id:Date.now().toString(),fecha:new Date().toISOString().split("T")[0],paciente:{nombre:"",dni:"",edad:"",sexo:"M",empresa:"",cargo:""},anamnesis:{motivo:"",tEvol:"",sintomas:"",aiText:""},antOcup:{exposiciones:"",tiempo:"",epps:"",aiText:""},exFisico:{pa:"",fc:"",fr:"",temp:"",peso:"",talla:"",hallazgos:"",aiText:""},laboratorio:{aiText:"",resumen:""},diagnostico:{cie10:"",aiText:""},plan:{indicaciones:"",aiText:""},aptitud:{resultado:"Apto",restricciones:"",aiText:""},interconsultas:[],estado:"borrador",fromEnfermeria:false});
+const emptyMetForm=()=>({id:Date.now().toString(),fecha:new Date().toISOString().split("T")[0],tipo_consulta:"Asistencial",peso:"",talla:"",imc:"",circunferencia_abdominal:"",pa_sistolica:"",pa_diastolica:"",colesterol_total:"",hdl:"",ldl:"",vldl:"",trigliceridos:"",glucosa_ayunas:"",hba1c:"",acido_urico:"",creatinina:"",dx_metabolico:"Normal",riesgo_cardiovascular:"Bajo",observaciones:"",analisis_ia:""});
+
+// ── Componentes ───────────────────────────────────────────────
+const Btn=memo(({label,onClick,color=C.blue,text="#fff",small,disabled})=>(
+  <button disabled={disabled} onClick={onClick} style={{borderRadius:8,padding:small?"5px 12px":"8px 16px",fontSize:small?11:12,fontWeight:700,cursor:disabled?"not-allowed":"pointer",border:"none",background:color,color:text,display:"inline-flex",alignItems:"center",gap:5,opacity:disabled?.6:1}}>{label}</button>
+));
+
+const Card=memo(({title,icon,tag,tagColor=C.blue,children,accent=C.blueLight})=>(
+  <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:14,marginBottom:14,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,.05)"}}>
+    <div style={{background:accent,padding:"9px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:`1px solid ${C.border}`}}>
+      <span style={{fontWeight:700,fontSize:13,color:C.text}}>{icon} {title}</span>
+      {tag&&<span style={{background:tagColor+"22",color:tagColor,borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>{tag}</span>}
+    </div>
+    <div style={{padding:"14px 16px"}}>{children}</div>
+  </div>
+));
+
+const Field=memo(({label,value,onChange,type="text",options,full,readOnly,highlight})=>{
+  const base={border:`1px solid ${highlight?C.red:C.border}`,borderRadius:8,padding:"8px 10px",fontSize:13,outline:"none",color:C.text,width:"100%",boxSizing:"border-box"};
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:3,flex:1,minWidth:full?"100%":150,...(full?{flex:"1 1 100%"}:{})}}>
+      <label style={{fontSize:11,fontWeight:700,color:C.textSoft,textTransform:"uppercase",letterSpacing:.3}}>{label}</label>
+      {type==="textarea"?<textarea value={value} onChange={e=>onChange?.(e.target.value)} style={{...base,background:C.grayLight,resize:"vertical",minHeight:72,fontFamily:"inherit"}}/>
+      :type==="select"?<select value={value} onChange={e=>onChange?.(e.target.value)} style={{...base,background:C.grayLight}}>{options?.map(o=><option key={o} value={o}>{o}</option>)}</select>
+      :<input type={type} value={value} onChange={e=>onChange?.(e.target.value)} readOnly={readOnly} style={{...base,background:readOnly?C.blueLight:C.grayLight}}/>}
+    </div>
+  );
+});
+
+const AIResult=memo(({text,loading})=>{
+  if(loading)return<div style={{color:C.blue,fontSize:12,fontStyle:"italic",marginTop:7}}>⏳ IA procesando...</div>;
+  if(!text)return null;
+  return<div style={{background:C.blueLight,border:`1px solid ${C.blue}`,borderRadius:8,padding:"9px 12px",fontSize:12,color:C.text,marginTop:7,lineHeight:1.6}}><strong style={{color:C.blue}}>✦ IA:</strong> {text}</div>;
+});
+
+const BadgeValue=memo(({label,value,color,bg,unit})=>(
+  <div style={{display:"flex",flexDirection:"column",gap:2,flex:1,minWidth:90}}>
+    <label style={{fontSize:10,fontWeight:700,color:C.textSoft,textTransform:"uppercase"}}>{label}</label>
+    <div style={{border:`2px solid ${color||C.border}`,borderRadius:8,padding:"6px 10px",fontSize:13,fontWeight:700,color:color||C.text,background:bg||C.grayLight}}>
+      {value||"—"}{unit&&<span style={{fontSize:9,fontWeight:400,marginLeft:2}}>{unit}</span>}
+    </div>
+  </div>
+));
+
+const AteroBadge=memo(({label,value,riesgo})=>{
+  if(!value)return null;
+  return(
+    <div style={{flex:1,minWidth:110,background:riskBg(riesgo),border:`1px solid ${riskColor(riesgo)}`,borderRadius:10,padding:"10px 12px",textAlign:"center"}}>
+      <div style={{fontSize:10,fontWeight:700,color:C.textSoft,textTransform:"uppercase",marginBottom:3}}>{label}</div>
+      <div style={{fontSize:20,fontWeight:900,color:riskColor(riesgo)}}>{value}</div>
+      <div style={{fontSize:10,fontWeight:700,color:riskColor(riesgo),marginTop:2}}>{riesgo}</div>
+    </div>
+  );
+});
+
+const SMBadge=memo(({label,positivo,valor,noEval})=>{
+  if(noEval)return(<div style={{flex:1,minWidth:130,background:C.grayLight,border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px"}}><div style={{fontSize:10,fontWeight:700,color:C.textSoft,textTransform:"uppercase"}}>{label}</div><div style={{fontSize:11,color:C.gray,marginTop:2}}>No evaluado</div></div>);
+  const c=positivo?C.red:C.green;
+  return(<div style={{flex:1,minWidth:130,background:positivo?C.redLight:C.greenLight,border:`1px solid ${c}`,borderRadius:8,padding:"8px 10px"}}><div style={{fontSize:10,fontWeight:700,color:C.textSoft,textTransform:"uppercase"}}>{label}</div><div style={{fontSize:12,fontWeight:700,color:c,marginTop:2}}>{positivo?"✗ Alterado":"✓ Normal"}</div>{valor&&<div style={{fontSize:11,color:C.textSoft,marginTop:1}}>{valor}</div>}</div>);
+});
+
+const HCSection=memo(({title,icon,tag,tagColor,accent,children,aiText,aiLoading,onAI,aiLabel,onAIEdit})=>(
+  <Card title={title} icon={icon} tag={tag} tagColor={tagColor} accent={accent}>
+    {children}
+    <div style={{marginTop:8}}><Btn label={aiLabel||"✦ Redactar con IA"} onClick={onAI} color={C.blue} small/></div>
+    <AIResult text={aiText} loading={aiLoading}/>
+    {aiText&&onAIEdit&&<div style={{marginTop:8}}><Field label="✏ Editar" value={aiText} onChange={onAIEdit} type="textarea" full/></div>}
+  </Card>
+));
+
+// ══════════════════════════════════════════════════════════════
+// APP
+// ══════════════════════════════════════════════════════════════
+function App(){
+  const [vista,setVista]     = useState("historial");
+  const [historial,setHistorial] = useState([]);
+  const [hc,setHC]           = useState(emptyHC());
+  const [ldg,setLdg]         = useState({});
+  const [notif,setNotif]     = useState("");
+  const [busqPac,setBusqPac] = useState("");
+  const [busqFecha,setBusqFecha] = useState("");
+  const [busqEmpresa,setBusqEmpresa] = useState("");
+  const [dbOnline,setDbOnline] = useState(null);
+  const [pendientesEnf,setPendientesEnf] = useState(0);
+  const [loadingDB,setLoadingDB] = useState(true);
+  const [dashPac,setDashPac] = useState(null);
+  const [dashConsultas,setDashConsultas] = useState([]);
+  const [dashBusq,setDashBusq] = useState("");
+  const [dashForm,setDashForm] = useState(emptyMetForm());
+  const [dashVista,setDashVista] = useState("buscar");
+  const [dashParamsSel,setDashParamsSel] = useState(["imc","colesterol_total","trigliceridos","glucosa_ayunas"]);
+  const [loadingIA,setLoadingIA] = useState(false);
+  const [epiGrupo,setEpiGrupo] = useState("");
+  const labRef=useRef(),pollRef=useRef();
+
+  const cargarHistorial=useCallback(async()=>{const rows=await dbGetHistorial();if(rows===null){setDbOnline(false);return;}setDbOnline(true);setHistorial(rows);},[]);
+  const checkPendientes=useCallback(async()=>{try{const rows=await supaGetPendientes();setPendientesEnf(rows.filter(r=>!historial.find(h=>h.id===r.id)).length);}catch{}},[historial]);
+  useEffect(()=>{(async()=>{setLoadingDB(true);await cargarHistorial();setLoadingDB(false);})();},[]);
+  useEffect(()=>{checkPendientes();pollRef.current=setInterval(checkPendientes,30000);return()=>clearInterval(pollRef.current);},[historial]);
+
+  const toast=useCallback(msg=>{setNotif(msg);setTimeout(()=>setNotif(""),3500);},[]);
+  const setL=useCallback((k,v)=>setLdg(l=>({...l,[k]:v})),[]);
+  const upd=useCallback((sec,k,v)=>setHC(h=>({...h,[sec]:{...h[sec],[k]:v}})),[]);
+  const updD=useCallback((k,v)=>setDashForm(f=>({...f,[k]:v})),[]);
+  const imc=useCallback(()=>{const p=parseFloat(hc.exFisico.peso),t=parseFloat(hc.exFisico.talla);return(p&&t)?(p/(t*t)).toFixed(1):"—";},[hc.exFisico.peso,hc.exFisico.talla]);
+
+  const empresas=useMemo(()=>[...new Set(historial.map(h=>h.paciente.empresa).filter(Boolean))]<br/>,[historial]);
+  const filtrados=useMemo(()=>{const q=busqPac.toLowerCase();return historial.filter(h=>{const match=h.paciente.nombre.toLowerCase().includes(q)||h.paciente.dni.includes(q);return match&&(busqFecha?h.fecha===busqFecha:true)&&(busqEmpresa?h.paciente.empresa===busqEmpresa:true);});},[historial,busqPac,busqFecha,busqEmpresa]);
+  const chartData=useMemo(()=>dashConsultas.map(c=>({fecha:c.fecha,imc:parseFloat(c.imc)||null,pa_sistolica:parseFloat(c.pa_sistolica)||null,colesterol_total:parseFloat(c.colesterol_total)||null,hdl:parseFloat(c.hdl)||null,ldl:parseFloat(c.ldl)||null,trigliceridos:parseFloat(c.trigliceridos)||null,glucosa_ayunas:parseFloat(c.glucosa_ayunas)||null,hba1c:parseFloat(c.hba1c)||null})),[dashConsultas]);
+  const ultimaC=useMemo(()=>dashConsultas[dashConsultas.length-1],[dashConsultas]);
+  const atero=useMemo(()=>ultimaC?calcAtero(parseFloat(ultimaC.colesterol_total),parseFloat(ultimaC.hdl),parseFloat(ultimaC.ldl),parseFloat(ultimaC.trigliceridos)):{},[ultimaC]);
+  const sm=useMemo(()=>ultimaC?calcSM(ultimaC,dashPac?.paciente?.sexo||"M"):null,[ultimaC,dashPac]);
+  const ateroForm=useMemo(()=>calcAtero(parseFloat(dashForm.colesterol_total),parseFloat(dashForm.hdl),parseFloat(dashForm.ldl),parseFloat(dashForm.trigliceridos)),[dashForm.colesterol_total,dashForm.hdl,dashForm.ldl,dashForm.trigliceridos]);
+
+  const selDashPac=useCallback(async p=>{setDashPac(p);const rows=await dbGetMetabolicoByDni(p.paciente?.dni||p.dni);setDashConsultas(rows);setDashForm({...emptyMetForm(),paciente_dni:p.paciente?.dni||p.dni,paciente_nombre:p.paciente?.nombre||p.nombre});setDashVista("dashboard");},[]);
+  const guardarMetabolico=useCallback(async()=>{const sem=calcSemaforo(dashForm);const ok=await dbUpsertMetabolico({...dashForm,semaforo:sem,paciente_dni:dashPac.paciente?.dni||dashPac.dni,paciente_nombre:dashPac.paciente?.nombre||dashPac.nombre,paciente_empresa:dashPac.paciente?.empresa||dashPac.empresa||""});if(ok){const rows=await dbGetMetabolicoByDni(dashPac.paciente?.dni||dashPac.dni);setDashConsultas(rows);setDashForm(emptyMetForm());setDashVista("dashboard");toast("✅ Guardado");}else toast("❌ Error al guardar");},[dashForm,dashPac,toast]);
+  const eliminarMetabolico=useCallback(async id=>{await dbDeleteMetabolico(id);const rows=await dbGetMetabolicoByDni(dashPac.paciente?.dni||dashPac.dni);setDashConsultas(rows);toast("🗑 Eliminado");},[dashPac,toast]);
+  const analizarIA=useCallback(async()=>{if(!dashConsultas.length){toast("Sin consultas");return;}setLoadingIA(true);const resumen=dashConsultas.map(c=>`Fecha:${c.fecha} IMC:${c.imc} CT:${c.colesterol_total} HDL:${c.hdl} LDL:${c.ldl} TG:${c.trigliceridos} Gluc:${c.glucosa_ayunas} HbA1c:${c.hba1c} PA:${c.pa_sistolica}/${c.pa_diastolica} AU:${c.acido_urico} Cr:${c.creatinina}`).join("\n");const t=await callClaude(`Médico ocupacional peruano. Analiza evolución metabólica: ${dashPac.paciente?.nombre||dashPac.nombre}.\nHistorial:\n${resumen}\nIncluye: 1.Tendencia parámetros 2.Riesgo CV Framingham 3.Síndrome metabólico IDF 4.Índice aterogénico 5.Recomendaciones farmacológicas/no farmacológicas 6.Metas próxima consulta.`);if(dashConsultas.length>0){await dbUpsertMetabolico({...ultimaC,analisis_ia:t});const rows=await dbGetMetabolicoByDni(dashPac.paciente?.dni||dashPac.dni);setDashConsultas(rows);}setLoadingIA(false);toast("✅ Análisis IA completado");},[dashConsultas,dashPac,ultimaC,toast]);
+  const calcIMC=useCallback(()=>{const p=parseFloat(dashForm.peso),t=parseFloat(dashForm.talla);if(p&&t)setDashForm(f=>({...f,imc:(p/(t*t)).toFixed(1)}));},[dashForm.peso,dashForm.talla]);
+
+  const genAnamnesis=useCallback(async()=>{setL("an",true);const t=await callClaude(`Médico ocupacional peruano. Redacta anamnesis narrativa. Motivo:"${hc.anamnesis.motivo}". Evolución:"${hc.anamnesis.tEvol}". Síntomas:"${hc.anamnesis.sintomas}". Paciente:${hc.paciente.nombre},${hc.paciente.edad}a,${hc.paciente.cargo} en ${hc.paciente.empresa}.`);upd("anamnesis","aiText",t);setL("an",false);},[hc,setL,upd]);
+  const genAntOcup=useCallback(async()=>{setL("ao",true);const t=await callClaude(`Redacta antecedentes ocupacionales. Exposiciones:"${hc.antOcup.exposiciones}". Tiempo:"${hc.antOcup.tiempo}". EPPs:"${hc.antOcup.epps}". Cargo:${hc.paciente.cargo},empresa:${hc.paciente.empresa}.`);upd("antOcup","aiText",t);setL("ao",false);},[hc,setL,upd]);
+  const genExFisico=useCallback(async()=>{setL("ef",true);const t=await callClaude(`Interpreta examen físico. PA:${hc.exFisico.pa},FC:${hc.exFisico.fc},FR:${hc.exFisico.fr},T°:${hc.exFisico.temp},Peso:${hc.exFisico.peso}kg,Talla:${hc.exFisico.talla}m,IMC:${imc()}. Hallazgos:"${hc.exFisico.hallazgos}".`);upd("exFisico","aiText",t);setL("ef",false);},[hc,imc,setL,upd]);
+  const genDx=useCallback(async()=>{setL("dx",true);const t=await callClaude(`Sugiere diagnósticos CIE-10. Motivo:"${hc.anamnesis.motivo}",hallazgos:"${hc.exFisico.hallazgos}",lab:"${hc.laboratorio.resumen}". ${hc.paciente.edad}a,${hc.paciente.cargo}. CIE:${hc.diagnostico.cie10}.`);upd("diagnostico","aiText",t);setL("dx",false);},[hc,setL,upd]);
+  const genPlan=useCallback(async()=>{setL("pl",true);const t=await callClaude(`Plan de manejo. Dx:"${hc.diagnostico.cie10}",${hc.paciente.edad}a. Farmacológico MINSA/OPS, seguimiento.`,true);upd("plan","aiText",t);setL("pl",false);},[hc,setL,upd]);
+  const genAptitud=useCallback(async()=>{setL("apt",true);const t=await callClaude(`Conclusión aptitud médico-ocupacional. Resultado:"${hc.aptitud.resultado}". Restricciones:"${hc.aptitud.restricciones}". Dx:"${hc.diagnostico.cie10}". Cargo:${hc.paciente.cargo}. Ley 29783.`);upd("aptitud","aiText",t);setL("apt",false);},[hc,setL,upd]);
+  const handleLabPDF=useCallback(async e=>{const file=e.target.files[0];if(!file)return;setL("lab",true);try{const b64=await readB64(file);const t=await callClaudePDF(b64,"Analiza laboratorio. Extrae valores, indica alterados, interpretación clínica medicina ocupacional.");setHC(h=>({...h,laboratorio:{aiText:t,resumen:t}}));}catch{setHC(h=>({...h,laboratorio:{...h.laboratorio,aiText:"Error al procesar PDF."}}));}setL("lab",false);},[setL]);
+  const addIC=useCallback(()=>setHC(h=>({...h,interconsultas:[...h.interconsultas,{id:Date.now().toString(),especialidad:"Cardiología",motivo:"",urgencia:"Electiva",estado:"Pendiente",aiText:""}]})),[]);
+  const updIC=useCallback((id,k,v)=>setHC(h=>({...h,interconsultas:h.interconsultas.map(ic=>ic.id===id?{...ic,[k]:v}:ic)})),[]);
+  const delIC=useCallback(id=>setHC(h=>({...h,interconsultas:h.interconsultas.filter(ic=>ic.id!==id)})),[]);
+  const genIC=useCallback(async id=>{const ic=hc.interconsultas.find(i=>i.id===id);setL("ic_"+id,true);const t=await callClaude(`Redacta interconsulta a ${ic.especialidad}. Paciente:${hc.paciente.nombre},${hc.paciente.edad}a. Dx:${hc.diagnostico.cie10}. Motivo:"${ic.motivo}". Urgencia:${ic.urgencia}.`);updIC(id,"aiText",t);setL("ic_"+id,false);},[hc,setL,updIC]);
+  const guardarHC=useCallback(async()=>{const ok=await dbUpsertHC({...hc,estado:"guardada"});if(ok){await cargarHistorial();toast("✅ HC guardada");setVista("historial");}else toast("❌ Error al guardar");},[hc,cargarHistorial,toast]);
+  const eliminarHC=useCallback(async id=>{if(await dbDeleteHC(id)){setHistorial(h=>h.filter(x=>x.id!==id));toast("🗑 Eliminado");}else toast("❌ Error");},[toast]);
+  const nuevaHC=useCallback(()=>{setHC(emptyHC());setVista("editor");},[]);
+  const abrirHC=useCallback(h=>{setHC(h);setVista("editor");},[]);
+
+  const importarEnfermeria=useCallback(async()=>{
+    try{
+      const rows=await supaGetPendientes();if(!rows.length){toast("Sin pendientes de Enfermería");return;}
+      const ids=historial.map(h=>h.id);
+      const nuevas=rows.filter(r=>!ids.includes(r.id)).map(row=>({...emptyHC(),id:row.id,fecha:row.fecha,paciente:{nombre:row.nombre||"",dni:row.dni||"",edad:row.edad||"",sexo:"M",empresa:row.empresa||"",cargo:row.cargo||""},anamnesis:{motivo:row.motivo||"",tEvol:row.t_evol||"",sintomas:row.sintomas||"",aiText:""},antOcup:{exposiciones:row.exposiciones||"",tiempo:row.tiempo||"",epps:row.epps||"",aiText:""},exFisico:{pa:row.pa||"",fc:row.fc||"",fr:row.fr||"",temp:row.temp||"",peso:row.peso||"",talla:row.talla||"",hallazgos:"",aiText:""},laboratorio:{aiText:row.lab_resumen||"",resumen:row.lab_resumen||""},fromEnfermeria:true,estado:"pendiente-médico"}));
+      if(!nuevas.length){toast("Todos ya importados");return;}
+      for(const n of nuevas)await dbUpsertHC(n);
+      for(const r of rows)await supaMarkAtendido(r.id);
+      await cargarHistorial();setPendientesEnf(0);toast(`✅ ${nuevas.length} registro(s) importados`);
+    }catch(e){toast("Error: "+e.message);}
+  },[historial,cargarHistorial,toast]);
+
+  const exportarHC=useCallback(()=>{
+    const p=hc.paciente;const imcVal=imc();
+    const aptColor=hc.aptitud.resultado==="Apto"?"#48BB78":hc.aptitud.resultado.includes("restricciones")?"#F6AD55":"#FC8181";
+    const html=`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>HC · ${p.nombre} · ${hc.fecha}</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',Georgia,serif;background:#F5F9FF;color:#2D3748;font-size:13px;line-height:1.7}.pagina{max-width:820px;margin:32px auto;background:#fff;border-radius:16px;box-shadow:0 4px 24px rgba(74,144,217,.12);overflow:hidden}.header{background:linear-gradient(135deg,#4A90D9,#38B2AC);color:#fff;padding:24px 32px;display:flex;align-items:center;gap:18px}.logo{width:56px;height:56px;border-radius:50%;background:rgba(255,255,255,.25);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:22px}.ht{font-size:22px;font-weight:900}.hs{font-size:11px;opacity:.9;margin-top:3px}.hf{margin-left:auto;text-align:right;font-size:12px;opacity:.85}.pbar{background:#EAF6FB;border-bottom:1px solid #E2E8F0;padding:14px 32px;display:flex;gap:24px;flex-wrap:wrap}.dato{display:flex;flex-direction:column}.dlbl{font-size:9px;font-weight:700;text-transform:uppercase;color:#718096}.dval{font-size:13px;font-weight:700}.body{padding:24px 32px}.sec{margin-bottom:20px;border-radius:10px;overflow:hidden;border:1px solid #E2E8F0}.stit{background:#F7FAFC;padding:8px 14px;font-size:11px;font-weight:800;text-transform:uppercase;color:#4A90D9;border-bottom:1px solid #E2E8F0}.sbody{padding:12px 14px}.ai{background:#F0FFF4;border-left:4px solid #48BB78;border-radius:0 8px 8px 0;padding:10px 14px;font-size:12px;line-height:1.7;white-space:pre-wrap;margin-top:8px}.apt{display:inline-block;padding:4px 16px;border-radius:20px;font-weight:800;font-size:13px;color:#fff;background:${aptColor};margin-bottom:10px}.firma-z{margin-top:36px;padding-top:20px;border-top:2px solid #E2E8F0;display:flex;justify-content:flex-end}.firma-c{text-align:center}.footer{background:#F7FAFC;border-top:1px solid #E2E8F0;padding:12px 32px;text-align:center;font-size:10px;color:#718096}@media print{body{background:#fff}.pagina{box-shadow:none;margin:0;border-radius:0}}</style></head><body><div class="pagina"><div class="header"><div class="logo">P</div><div><div class="ht">PANACEA MEDWEB</div><div class="hs">Historia Clínica Ocupacional</div></div><div class="hf"><div style="font-weight:700">${hc.fecha}</div><div style="margin-top:4px;background:rgba(255,255,255,.2);border-radius:6px;padding:2px 10px;font-size:10px;font-weight:700">${hc.estado?.toUpperCase()}</div></div></div><div class="pbar"><div class="dato"><span class="dlbl">Nombre</span><span class="dval">${p.nombre||"—"}</span></div><div class="dato"><span class="dlbl">DNI</span><span class="dval">${p.dni||"—"}</span></div><div class="dato"><span class="dlbl">Edad</span><span class="dval">${p.edad||"—"} años</span></div><div class="dato"><span class="dlbl">Empresa</span><span class="dval">${p.empresa||"—"}</span></div><div class="dato"><span class="dlbl">Cargo</span><span class="dval">${p.cargo||"—"}</span></div></div><div class="body"><div class="sec"><div class="stit">📋 Anamnesis</div><div class="sbody">${hc.anamnesis.aiText?`<div class="ai">${hc.anamnesis.aiText}</div>`:`<p>${hc.anamnesis.motivo||"—"}</p>`}</div></div><div class="sec"><div class="stit">🏭 Antecedentes Ocupacionales</div><div class="sbody">${hc.antOcup.aiText?`<div class="ai">${hc.antOcup.aiText}</div>`:`<p>${hc.antOcup.exposiciones||"—"}</p>`}</div></div><div class="sec"><div class="stit">🩺 Examen Físico</div><div class="sbody"><p>PA:${hc.exFisico.pa||"—"} | FC:${hc.exFisico.fc||"—"} | FR:${hc.exFisico.fr||"—"} | T°:${hc.exFisico.temp||"—"} | Peso:${hc.exFisico.peso||"—"}kg | Talla:${hc.exFisico.talla||"—"}m | IMC:${imcVal}</p>${hc.exFisico.aiText?`<div class="ai">${hc.exFisico.aiText}</div>`:""}</div></div>${hc.laboratorio.aiText?`<div class="sec"><div class="stit">🔬 Laboratorio</div><div class="sbody"><div class="ai">${hc.laboratorio.aiText}</div></div></div>`:""}<div class="sec"><div class="stit">🏷 Diagnóstico CIE-10</div><div class="sbody"><p><strong>${hc.diagnostico.cie10||"—"}</strong></p>${hc.diagnostico.aiText?`<div class="ai">${hc.diagnostico.aiText}</div>`:""}</div></div><div class="sec"><div class="stit">💊 Plan / Indicaciones</div><div class="sbody">${hc.plan.aiText?`<div class="ai">${hc.plan.aiText}</div>`:`<p>${hc.plan.indicaciones||"—"}</p>`}</div></div><div class="sec"><div class="stit">✅ Aptitud Médico-Ocupacional</div><div class="sbody"><div class="apt">${hc.aptitud.resultado.toUpperCase()}</div>${hc.aptitud.restricciones?`<p style="font-size:12px;color:#718096">Restricciones: ${hc.aptitud.restricciones}</p>`:""}${hc.aptitud.aiText?`<div class="ai">${hc.aptitud.aiText}</div>`:""}</div></div>${hc.interconsultas.length?`<div class="sec"><div class="stit">🔀 Interconsultas</div><div class="sbody">${hc.interconsultas.map(ic=>`<div style="border:1px solid #E9D8FD;border-radius:8px;padding:10px;margin-bottom:8px;background:#FAF5FF"><strong style="color:#9F7AEA">${ic.especialidad}</strong> · ${ic.urgencia} · ${ic.estado}<br/>${ic.aiText||ic.motivo||""}</div>`).join("")}</div></div>`:""}<div class="firma-z"><div class="firma-c"><img src="${FIRMA_B64}" style="width:200px;height:50px;object-fit:contain;display:block;margin:0 auto 6px"/><div style="width:220px;border-bottom:1.5px solid #2D3748;margin:0 auto 6px"></div><div style="font-weight:800;font-size:14px">Dr. Miguel Wenceslao Ochoa Cuadros</div><div style="font-size:11px;color:#718096">Médico Ocupacional · CMP 102517 · RNE/RNA 13334</div></div></div></div><div class="footer"><strong style="color:#4A90D9">PANACEA MEDICINA OCUPACIONAL</strong> · panaceamedocup@gmail.com · Arequipa, Perú<br/>Generado el ${new Date().toLocaleDateString("es-PE",{year:"numeric",month:"long",day:"numeric"})}</div></div></body></html>`;
+    const blob=new Blob([html],{type:"text/html;charset=utf-8"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");a.href=url;a.download=`HC_${p.nombre||"paciente"}_${hc.fecha}.html`;a.click();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);toast("⬇ HC exportada con firma");
+  },[hc,imc,toast]);
+
+  const badgeColor=e=>e==="guardada"?C.green:e==="pendiente-médico"?C.amber:C.gray;
+
+  return(
+    <div style={{minHeight:"100vh",background:C.bg,fontFamily:"'Segoe UI',system-ui,sans-serif",color:C.text}}>
+      {notif&&<div style={{position:"fixed",top:16,right:16,background:C.teal,color:"#fff",padding:"10px 18px",borderRadius:10,fontWeight:700,fontSize:13,zIndex:999,boxShadow:"0 4px 16px rgba(0,0,0,.12)"}}>{notif}</div>}
+
+      {/* HEADER */}
+      <div style={{background:"linear-gradient(135deg,#4A90D9 0%,#38B2AC 100%)",color:"#fff",padding:"14px 24px",boxShadow:"0 2px 12px rgba(74,144,217,.3)"}}>
+        <div style={{maxWidth:980,margin:"0 auto",display:"flex",alignItems:"center",gap:14}}>
+          <div style={{width:46,height:46,borderRadius:"50%",background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:20,flexShrink:0}}>P</div>
+          <div>
+            <div style={{fontSize:21,fontWeight:900,letterSpacing:1}}>PANACEA MEDWEB</div>
+            <div style={{fontSize:11,color:"rgba(255,255,255,.85)",display:"flex",alignItems:"center",gap:6}}>
+              Historia Clínica con IA · Dr. Ochoa Cuadros CMP 102517
+              <span style={{background:dbOnline===null?"rgba(255,255,255,.3)":dbOnline?"#48BB78":"#FC8181",borderRadius:20,padding:"1px 8px",fontSize:10,fontWeight:700}}>
+                {dbOnline===null?"⏳":dbOnline?"☁ OK":"⚠ Sin conexión"}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* NAVBAR */}
+      <div style={{background:C.white,borderBottom:`1px solid ${C.border}`,boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
+        <div style={{maxWidth:980,margin:"0 auto",padding:"0 24px",display:"flex",alignItems:"center",gap:4}}>
+          {[{key:"historial",label:"📋 Historial"},{key:"editor",label:"✏ Editor HC"},{key:"dashboard",label:"📊 Dashboard Metabólico"},{key:"epidemio",label:"🏭 Epidemiología"}].map(n=>(
+            <button key={n.key} onClick={()=>setVista(n.key)} style={{padding:"11px 16px",fontSize:13,fontWeight:700,cursor:"pointer",border:"none",background:"transparent",color:vista===n.key?C.blue:C.gray,borderBottom:vista===n.key?`3px solid ${C.blue}`:"3px solid transparent"}}>{n.label}</button>
+          ))}
+          <div style={{marginLeft:"auto",display:"flex",gap:8,padding:"8px 0",alignItems:"center"}}>
+            <Btn label="+ Nueva HC" onClick={nuevaHC} color={C.green} small/>
+            <button onClick={importarEnfermeria} style={{borderRadius:8,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:"pointer",border:"none",background:pendientesEnf>0?C.red:C.amber,color:pendientesEnf>0?"#fff":"#000",display:"inline-flex",alignItems:"center",gap:5}}>
+              ⬇ Importar Enfermería {pendientesEnf>0&&<span style={{background:"rgba(255,255,255,.3)",borderRadius:"50%",width:18,height:18,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:900}}>{pendientesEnf}</span>}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div style={{maxWidth:980,margin:"0 auto",padding:"20px 14px"}}>
+
+        {/* HISTORIAL */}
+        {vista==="historial"&&(
+          <div>
+            <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap",alignItems:"flex-end"}}>
+              <input style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 12px",fontSize:13,background:C.grayLight,outline:"none",color:C.text,flex:2,minWidth:200}} placeholder="🔍 Nombre o DNI..." value={busqPac} onChange={e=>setBusqPac(e.target.value)}/>
+              <input type="date" style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 12px",fontSize:13,background:C.grayLight,outline:"none",color:C.text,flex:1,minWidth:140}} value={busqFecha} onChange={e=>setBusqFecha(e.target.value)}/>
+              <select style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 12px",fontSize:13,background:C.grayLight,color:C.text,flex:1,minWidth:140}} value={busqEmpresa} onChange={e=>setBusqEmpresa(e.target.value)}>
+                <option value="">Todas las empresas</option>{empresas.map(e=><option key={e} value={e}>{e}</option>)}
+              </select>
+              {(busqPac||busqFecha||busqEmpresa)&&<Btn label="✕ Limpiar" onClick={()=>{setBusqPac("");setBusqFecha("");setBusqEmpresa("");}} color={C.gray} small/>}
+              <span style={{fontSize:12,color:C.textSoft,whiteSpace:"nowrap"}}>{filtrados.length} registro(s)</span>
+            </div>
+            {loadingDB?(<div style={{textAlign:"center",padding:"52px 0",color:C.textSoft}}>⏳ Cargando...</div>)
+            :filtrados.length===0?(<div style={{textAlign:"center",padding:"52px 0",color:C.textSoft}}><div style={{fontSize:48,marginBottom:10}}>🗂</div><div style={{fontWeight:700,fontSize:16}}>Sin historias clínicas</div></div>)
+            :(<div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:14,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,.05)"}}>
+              {filtrados.map((h,i)=>(
+                <div key={h.id} onClick={()=>abrirHC(h)} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 16px",borderBottom:i<filtrados.length-1?`1px solid ${C.border}`:"none",cursor:"pointer",background:i%2===0?C.white:C.grayLight}}>
+                  <div style={{width:36,height:36,borderRadius:"50%",background:C.blueLight,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,color:C.blue,fontSize:14,flexShrink:0}}>{(h.paciente.nombre[0]||"?").toUpperCase()}</div>
+                  <div style={{flex:1}}>
+                    <div style={{fontWeight:700,fontSize:13}}>{h.paciente.nombre||"Sin nombre"}</div>
+                    <div style={{fontSize:11,color:C.textSoft}}>DNI: {h.paciente.dni||"—"} · {h.paciente.empresa||"—"} · {h.paciente.cargo||"—"}</div>
+                  </div>
+                  <div style={{textAlign:"right",display:"flex",flexDirection:"column",gap:3,alignItems:"flex-end"}}>
+                    <div style={{fontSize:11,color:C.textSoft}}>{h.fecha}</div>
+                    <span style={{background:badgeColor(h.estado),color:"#fff",borderRadius:20,padding:"2px 9px",fontSize:11,fontWeight:700}}>{h.estado}</span>
+                    {h.fromEnfermeria&&<span style={{background:C.teal,color:"#fff",borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700}}>ENF</span>}
+                    {h.interconsultas?.filter(ic=>ic.estado==="Pendiente").length>0&&<span style={{background:C.purple,color:"#fff",borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700}}>🔀 {h.interconsultas.filter(ic=>ic.estado==="Pendiente").length} IC</span>}
+                  </div>
+                  <button onClick={e=>{e.stopPropagation();eliminarHC(h.id);}} style={{background:C.redLight,border:`1px solid ${C.red}`,color:C.red,borderRadius:7,padding:"4px 9px",cursor:"pointer",fontSize:11,fontWeight:700,marginLeft:8}}>🗑</button>
+                </div>
+              ))}
+            </div>)}
+          </div>
+        )}
+
+        {/* EDITOR */}
+        {vista==="editor"&&(
+          <div>
+            <div style={{display:"flex",gap:8,marginBottom:14,alignItems:"center",flexWrap:"wrap"}}>
+              <button onClick={()=>setVista("historial")} style={{background:C.grayLight,border:`1px solid ${C.border}`,borderRadius:8,padding:"6px 14px",fontSize:12,fontWeight:700,cursor:"pointer",color:C.text}}>← Historial</button>
+              {hc.fromEnfermeria&&<span style={{background:C.teal,color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>Importado de Enfermería</span>}
+              <div style={{marginLeft:"auto",display:"flex",gap:8}}>
+                <Btn label="💾 Guardar" onClick={guardarHC} color={C.green} small/>
+                <Btn label="⬇ Exportar HTML" onClick={exportarHC} color={C.blue} small/>
+              </div>
+            </div>
+
+            <Card title="Datos del Paciente" icon="👤" tag="IDENTIFICACIÓN" tagColor={C.blue} accent={C.blueLight}>
+              <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:10}}>
+                <Field label="Nombre" value={hc.paciente.nombre} onChange={v=>upd("paciente","nombre",v)}/>
+                <Field label="DNI"    value={hc.paciente.dni}    onChange={v=>upd("paciente","dni",v)}/>
+                <Field label="Edad"   value={hc.paciente.edad}   onChange={v=>upd("paciente","edad",v)} type="number"/>
+                <Field label="Sexo"   value={hc.paciente.sexo||"M"} onChange={v=>upd("paciente","sexo",v)} type="select" options={["M","F"]}/>
+                <Field label="Fecha"  value={hc.fecha} onChange={v=>setHC(h=>({...h,fecha:v}))} type="date"/>
+              </div>
+              <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+                <Field label="Empresa" value={hc.paciente.empresa} onChange={v=>upd("paciente","empresa",v)}/>
+                <Field label="Cargo"   value={hc.paciente.cargo}   onChange={v=>upd("paciente","cargo",v)}/>
+              </div>
+            </Card>
+
+            <HCSection title="Anamnesis" icon="📋" tag="SUBJETIVO" tagColor={C.purple} accent={C.purpleLight} aiText={hc.anamnesis.aiText} aiLoading={ldg.an} onAI={genAnamnesis} onAIEdit={v=>upd("anamnesis","aiText",v)}>
+              <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:10}}>
+                <Field label="Motivo"    value={hc.anamnesis.motivo}   onChange={v=>upd("anamnesis","motivo",v)} full/>
+                <Field label="Evolución" value={hc.anamnesis.tEvol}    onChange={v=>upd("anamnesis","tEvol",v)}/>
+                <Field label="Síntomas"  value={hc.anamnesis.sintomas} onChange={v=>upd("anamnesis","sintomas",v)}/>
+              </div>
+            </HCSection>
+
+            <HCSection title="Antecedentes Ocupacionales" icon="🏭" tag="OCUPACIONAL" tagColor={C.amber} accent={C.amberLight} aiText={hc.antOcup.aiText} aiLoading={ldg.ao} onAI={genAntOcup} onAIEdit={v=>upd("antOcup","aiText",v)}>
+              <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:10}}>
+                <Field label="Exposiciones"      value={hc.antOcup.exposiciones} onChange={v=>upd("antOcup","exposiciones",v)} full/>
+                <Field label="Tiempo de servicio" value={hc.antOcup.tiempo}      onChange={v=>upd("antOcup","tiempo",v)}/>
+                <Field label="EPPs"              value={hc.antOcup.epps}         onChange={v=>upd("antOcup","epps",v)}/>
+              </div>
+            </HCSection>
+
+            <HCSection title="Examen Físico" icon="🩺" tag="OBJETIVO" tagColor={C.teal} accent={C.tealLight} aiText={hc.exFisico.aiText} aiLoading={ldg.ef} onAI={genExFisico} aiLabel="✦ Interpretar con IA" onAIEdit={v=>upd("exFisico","aiText",v)}>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}>
+                {[["pa","PA (mmHg)"],["fc","FC (lpm)"],["fr","FR (rpm)"],["temp","Temp °C"]].map(([k,l])=>{
+                  const{color,bg}=paramStatus(k,hc.exFisico[k]);
+                  return<BadgeValue key={k} label={l} value={hc.exFisico[k]} color={color} bg={bg}/>;
+                })}
+              </div>
+              <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:10}}>
+                <Field label="Peso kg"  value={hc.exFisico.peso}   onChange={v=>upd("exFisico","peso",v)}/>
+                <Field label="Talla m"  value={hc.exFisico.talla}  onChange={v=>upd("exFisico","talla",v)}/>
+                <div style={{display:"flex",flexDirection:"column",gap:3,flex:1,minWidth:90}}>
+                  <label style={{fontSize:11,fontWeight:700,color:C.textSoft,textTransform:"uppercase"}}>IMC</label>
+                  <div style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px",fontSize:14,fontWeight:700,color:C.blue,background:C.blueLight}}>{imc()}</div>
+                </div>
+              </div>
+              <Field label="Hallazgos por sistemas" value={hc.exFisico.hallazgos} onChange={v=>upd("exFisico","hallazgos",v)} type="textarea" full/>
+            </HCSection>
+
+            <Card title="Laboratorio" icon="🔬" tag="ANÁLISIS" tagColor={C.green} accent={C.greenLight}>
+              <input ref={labRef} type="file" accept="application/pdf" style={{display:"none"}} onChange={handleLabPDF}/>
+              <button onClick={()=>labRef.current.click()} style={{border:`2px dashed ${C.green}`,borderRadius:10,padding:"14px 20px",textAlign:"center",cursor:"pointer",background:C.greenLight,width:"100%",color:C.green,fontWeight:700,fontSize:13}}>📎 Cargar PDF de laboratorio</button>
+              <AIResult text={hc.laboratorio.aiText} loading={ldg.lab}/>
+              {hc.laboratorio.aiText&&<div style={{marginTop:8}}><Field label="✏ Editar" value={hc.laboratorio.aiText} onChange={v=>setHC(h=>({...h,laboratorio:{aiText:v,resumen:v}}))} type="textarea" full/></div>}
+            </Card>
+
+            <HCSection title="Diagnóstico CIE-10" icon="🏷" tag="DIAGNÓSTICO" tagColor={C.red} accent={C.redLight} aiText={hc.diagnostico.aiText} aiLoading={ldg.dx} onAI={genDx} aiLabel="✦ Sugerir con IA">
+              <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:10}}>
+                <Field label="CIE-10 frecuente" value={hc.diagnostico.cie10} onChange={v=>upd("diagnostico","cie10",v)} type="select" options={["— Seleccionar —",...CIE10]}/>
+                <Field label="O escribir diagnóstico" value={hc.diagnostico.cie10} onChange={v=>upd("diagnostico","cie10",v)}/>
+              </div>
+            </HCSection>
+
+            <HCSection title="Plan / Indicaciones" icon="💊" tag="TRATAMIENTO" tagColor={C.blue} accent={C.blueLight} aiText={hc.plan.aiText} aiLoading={ldg.pl} onAI={genPlan} aiLabel="✦ Generar plan con IA + Web 🌐" onAIEdit={v=>upd("plan","aiText",v)}>
+              <Field label="Notas" value={hc.plan.indicaciones} onChange={v=>upd("plan","indicaciones",v)} type="textarea" full/>
+            </HCSection>
+
+            <HCSection title="Aptitud Médico-Ocupacional" icon="✅" tag="CAMO" tagColor={C.teal} accent={C.tealLight} aiText={hc.aptitud.aiText} aiLoading={ldg.apt} onAI={genAptitud} onAIEdit={v=>upd("aptitud","aiText",v)}>
+              <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:10}}>
+                <Field label="Resultado" value={hc.aptitud.resultado} onChange={v=>upd("aptitud","resultado",v)} type="select" options={["Apto","Apto con restricciones","No apto temporal","No apto permanente"]}/>
+                <Field label="Restricciones" value={hc.aptitud.restricciones} onChange={v=>upd("aptitud","restricciones",v)}/>
+              </div>
+              <span style={{background:hc.aptitud.resultado==="Apto"?C.green:hc.aptitud.resultado.includes("restricciones")?C.amber:C.red,color:"#fff",borderRadius:20,padding:"3px 12px",fontSize:12,fontWeight:700}}>{hc.aptitud.resultado.toUpperCase()}</span>
+            </HCSection>
+
+            <Card title="Interconsultas" icon="🔀" tag="DERIVACIONES" tagColor={C.purple} accent={C.purpleLight}>
+              <div style={{marginBottom:10}}><Btn label="+ Agregar" onClick={addIC} color={C.purple} small/></div>
+              {hc.interconsultas.length===0&&<div style={{color:C.textSoft,fontSize:12,textAlign:"center",padding:"10px 0"}}>Sin interconsultas registradas</div>}
+              {hc.interconsultas.map(ic=>(
+                <div key={ic.id} style={{border:`1px solid ${C.border}`,borderRadius:10,padding:12,marginBottom:10,background:C.grayLight}}>
+                  <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:8}}>
+                    <Field label="Especialidad" value={ic.especialidad} onChange={v=>updIC(ic.id,"especialidad",v)} type="select" options={ESPECIALIDADES}/>
+                    <Field label="Urgencia"     value={ic.urgencia}    onChange={v=>updIC(ic.id,"urgencia",v)}    type="select" options={["Electiva","Preferente","Urgente"]}/>
+                    <Field label="Estado"       value={ic.estado}      onChange={v=>updIC(ic.id,"estado",v)}      type="select" options={["Pendiente","Enviada","Respondida"]}/>
+                  </div>
+                  <Field label="Motivo" value={ic.motivo} onChange={v=>updIC(ic.id,"motivo",v)} type="textarea" full/>
+                  <div style={{display:"flex",gap:8,marginTop:8}}>
+                    <Btn label="✦ Redactar con IA" onClick={()=>genIC(ic.id)} color={C.purple} small/>
+                    <Btn label="🗑" onClick={()=>delIC(ic.id)} color={C.red} small/>
+                  </div>
+                  {ldg["ic_"+ic.id]&&<div style={{color:C.blue,fontSize:12,fontStyle:"italic",marginTop:7}}>⏳ IA procesando...</div>}
+                  {ic.aiText&&<><div style={{background:C.purpleLight,border:`1px solid ${C.purple}`,borderRadius:8,padding:"9px 12px",fontSize:12,marginTop:7,lineHeight:1.6}}><strong style={{color:C.purple}}>✦ IA:</strong> {ic.aiText}</div><div style={{marginTop:8}}><Field label="✏ Editar" value={ic.aiText} onChange={v=>updIC(ic.id,"aiText",v)} type="textarea" full/></div></>}
+                </div>
+              ))}
+            </Card>
+
+            <div style={{display:"flex",gap:8,justifyContent:"flex-end",paddingBottom:28}}>
+              <Btn label="← Volver"        onClick={()=>setVista("historial")} color={C.gray} small/>
+              <Btn label="💾 Guardar HC"   onClick={guardarHC} color={C.green}/>
+              <Btn label="⬇ Exportar HTML" onClick={exportarHC} color={C.blue}/>
+            </div>
+          </div>
+        )}
+
+        {/* DASHBOARD METABÓLICO */}
+        {vista==="dashboard"&&(
+          <div>
+            <div style={{display:"flex",gap:8,marginBottom:16,alignItems:"center",flexWrap:"wrap"}}>
+              {dashVista!=="buscar"&&<button onClick={()=>{setDashVista("buscar");setDashPac(null);setDashConsultas([]);}} style={{background:C.grayLight,border:`1px solid ${C.border}`,borderRadius:8,padding:"6px 14px",fontSize:12,fontWeight:700,cursor:"pointer",color:C.text}}>← Cambiar paciente</button>}
+              {dashPac&&dashVista==="dashboard"&&<Btn label="+ Nueva consulta" onClick={()=>setDashVista("nueva")} color={C.green} small/>}
+              {dashPac&&<span style={{fontSize:13,fontWeight:700,color:C.text}}>{dashPac.paciente?.nombre||dashPac.nombre}</span>}
+            </div>
+
+            {dashVista==="buscar"&&(
+              <div style={{maxWidth:560,margin:"0 auto"}}>
+                <div style={{textAlign:"center",padding:"24px 0 20px"}}><div style={{fontSize:44,marginBottom:8}}>📊</div><div style={{fontWeight:800,fontSize:18}}>Seguimiento Metabólico</div></div>
+                <input value={dashBusq} onChange={e=>setDashBusq(e.target.value)} placeholder="🔍 Buscar paciente..." style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 14px",fontSize:14,background:C.white,outline:"none",color:C.text,boxSizing:"border-box",marginBottom:14}}/>
+                <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
+                  {historial.filter(h=>{const n=h.paciente?.nombre?.toLowerCase()||"";return n.includes(dashBusq.toLowerCase())||h.paciente?.dni?.includes(dashBusq);}).filter((h,i,arr)=>arr.findIndex(x=>x.paciente?.dni===h.paciente?.dni)===i).map((h,i,arr)=>(
+                    <div key={h.id} onClick={()=>selDashPac(h)} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderBottom:i<arr.length-1?`1px solid ${C.border}`:"none",cursor:"pointer",background:i%2===0?C.white:C.grayLight}}>
+                      <div style={{width:34,height:34,borderRadius:"50%",background:C.blueLight,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,color:C.blue,fontSize:13}}>{(h.paciente?.nombre?.[0]||"?").toUpperCase()}</div>
+                      <div style={{flex:1}}><div style={{fontWeight:700,fontSize:13}}>{h.paciente?.nombre||"—"}</div><div style={{fontSize:11,color:C.textSoft}}>DNI: {h.paciente?.dni||"—"} · {h.paciente?.empresa||"—"}</div></div>
+                      <span style={{fontSize:12,color:C.blue,fontWeight:700}}>Ver →</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {dashVista==="dashboard"&&dashPac&&(()=>{
+              const semActual=ultimaC?.semaforo||(ultimaC?calcSemaforo(ultimaC):null);
+              const smLevel=sm?.dx?.includes("✓")?"Alto":sm?.dx?.includes("Riesgo")?"Moderado":"Bajo";
+              return(
+                <div>
+                  <div style={{display:"flex",gap:12,marginBottom:14,flexWrap:"wrap"}}>
+                    <div style={{flex:2,minWidth:200,background:C.white,border:`1px solid ${C.border}`,borderRadius:14,padding:"14px 18px"}}>
+                      <div style={{fontWeight:800,fontSize:15}}>{dashPac.paciente?.nombre||dashPac.nombre}</div>
+                      <div style={{fontSize:11,color:C.textSoft}}>DNI: {dashPac.paciente?.dni||dashPac.dni} · {dashPac.paciente?.empresa||dashPac.empresa||"—"}</div>
+                      <div style={{fontSize:12,color:C.textSoft,marginTop:4}}>Consultas: <strong style={{color:C.blue}}>{dashConsultas.length}</strong></div>
+                    </div>
+                    {ultimaC&&<div style={{flex:1,minWidth:130,background:riskColor(semActual),borderRadius:14,padding:14,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",color:"#fff"}}>
+                      <div style={{fontWeight:900,fontSize:17}}>{semActual}</div>
+                      <div style={{fontSize:10,opacity:.9}}>Riesgo metabólico</div>
+                      <div style={{fontSize:11,fontWeight:700,marginTop:4}}>{ultimaC.dx_metabolico}</div>
+                    </div>}
+                    {sm&&<div style={{flex:1,minWidth:150,background:riskBg(smLevel),border:`1px solid ${riskColor(smLevel)}`,borderRadius:14,padding:14,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+                      <div style={{fontSize:11,fontWeight:700,color:C.textSoft,textTransform:"uppercase",marginBottom:4}}>S. Metabólico IDF</div>
+                      <div style={{fontSize:12,fontWeight:800,color:riskColor(smLevel),textAlign:"center"}}>{sm.dx}</div>
+                      <div style={{fontSize:10,color:C.textSoft,marginTop:4}}>{sm.otros}/4 criterios</div>
+                    </div>}
+                    {atero.global&&<div style={{flex:1,minWidth:120,background:riskBg(atero.global),border:`1px solid ${riskColor(atero.global)}`,borderRadius:14,padding:14,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+                      <div style={{fontSize:11,fontWeight:700,color:C.textSoft,textTransform:"uppercase",marginBottom:4}}>Índice Aterogénico</div>
+                      <div style={{fontSize:15,fontWeight:900,color:riskColor(atero.global)}}>{atero.global}</div>
+                    </div>}
+                  </div>
+
+                  {dashConsultas.length===0?(
+                    <div style={{textAlign:"center",padding:40,color:C.textSoft,background:C.white,borderRadius:14,border:`1px solid ${C.border}`}}><div style={{fontSize:36,marginBottom:8}}>📋</div><div style={{fontWeight:700}}>Sin consultas metabólicas</div></div>
+                  ):(
+                    <>
+                      {(atero.ct_hdl||atero.ldl_hdl||atero.tg_hdl)&&(
+                        <Card title="Índice Aterogénico" icon="🫀" tag="Última consulta" tagColor={C.red} accent={C.redLight}>
+                          <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:12}}>
+                            <AteroBadge label="CT / HDL (Castelli I)"   value={atero.ct_hdl}  riesgo={atero.ct_hdl_riesgo}/>
+                            <AteroBadge label="LDL / HDL (Castelli II)" value={atero.ldl_hdl} riesgo={atero.ldl_hdl_riesgo}/>
+                            <AteroBadge label="TG / HDL (aterogénico)"  value={atero.tg_hdl}  riesgo={atero.tg_hdl_riesgo}/>
+                          </div>
+                          <div style={{background:C.grayLight,borderRadius:8,padding:"8px 12px",fontSize:11,color:C.textSoft}}>CT/HDL &lt;3.5=Bajo · LDL/HDL &lt;2.5=Bajo · TG/HDL &lt;2=Bajo</div>
+                        </Card>
+                      )}
+
+                      {sm&&(
+                        <Card title="Síndrome Metabólico — Criterios IDF 2006" icon="⚕️" tag={sm.dx} tagColor={riskColor(smLevel)} accent={riskBg(smLevel)}>
+                          <div style={{fontSize:11,color:C.textSoft,marginBottom:10}}>Criterio central: <strong>Circunferencia Abdominal</strong> (H≥90cm / M≥80cm) + 2 de 4 criterios</div>
+                          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
+                            <SMBadge label="Circ. Abdominal" positivo={sm.criterios.ca} noEval={sm.criterios.ca===null} valor={ultimaC?.circunferencia_abdominal?`${ultimaC.circunferencia_abdominal} cm`:null}/>
+                            <SMBadge label="TG ≥150"         positivo={sm.criterios.tg} noEval={sm.criterios.tg===null} valor={ultimaC?.trigliceridos?`${ultimaC.trigliceridos} mg/dL`:null}/>
+                            <SMBadge label={`HDL <${dashPac.paciente?.sexo==="F"?"50":"40"}`} positivo={sm.criterios.hdl} noEval={sm.criterios.hdl===null} valor={ultimaC?.hdl?`${ultimaC.hdl} mg/dL`:null}/>
+                            <SMBadge label="PA ≥130/85"      positivo={sm.criterios.pa} noEval={sm.criterios.pa===null} valor={(ultimaC?.pa_sistolica&&ultimaC?.pa_diastolica)?`${ultimaC.pa_sistolica}/${ultimaC.pa_diastolica}`:null}/>
+                            <SMBadge label="Glucosa ≥100"    positivo={sm.criterios.gluc} noEval={sm.criterios.gluc===null} valor={ultimaC?.glucosa_ayunas?`${ultimaC.glucosa_ayunas} mg/dL`:null}/>
+                          </div>
+                          {sm.criterios.ca===null&&<div style={{background:C.amberLight,border:`1px solid ${C.amber}`,borderRadius:8,padding:"8px 12px",fontSize:11,color:"#7B4F00"}}>⚠️ Ingresar <strong>circunferencia abdominal</strong> para evaluación completa.</div>}
+                        </Card>
+                      )}
+
+                      <Card title="Evolución de Parámetros" icon="📈" accent={C.blueLight} tagColor={C.blue} tag={`${dashConsultas.length} consultas`}>
+                        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
+                          {Object.entries(PARAMS).map(([k,p])=>(
+                            <button key={k} onClick={()=>setDashParamsSel(prev=>prev.includes(k)?prev.filter(x=>x!==k):[...prev,k])}
+                              style={{borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer",border:`2px solid ${dashParamsSel.includes(k)?p.color:C.border}`,background:dashParamsSel.includes(k)?p.color+"18":"transparent",color:dashParamsSel.includes(k)?p.color:C.textSoft}}>
+                              {p.label}
+                            </button>
+                          ))}
+                        </div>
+                        <ResponsiveContainer width="100%" height={280}>
+                          <LineChart data={chartData} margin={{top:5,right:20,left:0,bottom:5}}>
+                            <CartesianGrid strokeDasharray="3 3" stroke={C.border}/>
+                            <XAxis dataKey="fecha" tick={{fontSize:10,fill:C.textSoft}}/>
+                            <YAxis tick={{fontSize:10,fill:C.textSoft}}/>
+                            <Tooltip contentStyle={{borderRadius:8,fontSize:11}}/>
+                            <Legend wrapperStyle={{fontSize:11}}/>
+                            {dashParamsSel.map(k=><Line key={k} type="monotone" dataKey={k} name={PARAMS[k].label} stroke={PARAMS[k].color} strokeWidth={2} dot={{r:3}} connectNulls/>)}
+                            {dashParamsSel.includes("glucosa_ayunas")  &&<ReferenceLine y={100} stroke={C.red}    strokeDasharray="4 2" label={{value:"Gluc 100",fill:C.red,   fontSize:9}}/>}
+                            {dashParamsSel.includes("colesterol_total")&&<ReferenceLine y={200} stroke={C.purple} strokeDasharray="4 2" label={{value:"CT 200",  fill:C.purple,fontSize:9}}/>}
+                            {dashParamsSel.includes("trigliceridos")   &&<ReferenceLine y={150} stroke={C.amber}  strokeDasharray="4 2" label={{value:"TG 150",  fill:C.amber, fontSize:9}}/>}
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </Card>
+
+                      <Card title="Tabla Comparativa" icon="📋" accent={C.tealLight} tagColor={C.teal}>
+                        <div style={{overflowX:"auto"}}>
+                          <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+                            <thead><tr style={{background:C.grayLight}}>
+                              <th style={{padding:"7px 10px",textAlign:"left",fontWeight:700,color:C.textSoft,borderBottom:`1px solid ${C.border}`}}>Parámetro</th>
+                              {dashConsultas.map(c=>(
+                                <th key={c.id} style={{padding:"7px 10px",textAlign:"center",fontWeight:700,color:C.blue,borderBottom:`1px solid ${C.border}`,whiteSpace:"nowrap"}}>
+                                  {c.fecha}<button onClick={()=>eliminarMetabolico(c.id)} style={{marginLeft:4,background:"none",border:"none",cursor:"pointer",color:C.red,fontSize:10}}>🗑</button>
+                                </th>
+                              ))}
+                            </tr></thead>
+                            <tbody>
+                              {Object.entries(PARAMS).map(([k,p])=>(
+                                <tr key={k} style={{borderBottom:`1px solid ${C.border}`}}>
+                                  <td style={{padding:"6px 10px",fontWeight:600,whiteSpace:"nowrap"}}>{p.label} <span style={{color:C.textSoft,fontSize:9}}>({p.unit})</span></td>
+                                  {dashConsultas.map((c,i)=>{
+                                    const val=parseFloat(c[k]);const prev=i>0?parseFloat(dashConsultas[i-1][k]):null;const t=tend(val,prev);
+                                    const{color}=paramStatus(k,val);
+                                    return(<td key={c.id} style={{padding:"6px 10px",textAlign:"center"}}>
+                                      <span style={{color,fontWeight:700}}>{val||"—"}</span>
+                                      {t&&<span style={{color:t.color,fontSize:9,marginLeft:3}}>{t.icon}{t.d}%</span>}
+                                    </td>);
+                                  })}
+                                </tr>
+                              ))}
+                              <tr style={{background:C.grayLight}}>
+                                <td style={{padding:"6px 10px",fontWeight:700}}>Semáforo</td>
+                                {dashConsultas.map(c=>{const s=c.semaforo||calcSemaforo(c);return(<td key={c.id} style={{padding:"6px 10px",textAlign:"center"}}><span style={{background:riskColor(s),color:"#fff",borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700}}>{s}</span></td>);})}
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </Card>
+
+                      <Card title="Análisis con IA" icon="🤖" accent={C.purpleLight} tagColor={C.purple}>
+                        <Btn label={loadingIA?"⏳ Analizando...":"✦ Analizar evolución completa con IA"} onClick={analizarIA} disabled={loadingIA} color={C.purple}/>
+                        {ultimaC?.analisis_ia&&<div style={{background:C.purpleLight,border:`1px solid ${C.purple}`,borderRadius:10,padding:14,fontSize:12,lineHeight:1.8,whiteSpace:"pre-wrap",marginTop:12}}>{ultimaC.analisis_ia}</div>}
+                      </Card>
+                    </>
+                  )}
+                </div>
+              );
+            })()}
+
+            {dashVista==="nueva"&&dashPac&&(
+              <div>
+                <Card title="Antropométricos + PA" icon="⚖" accent={C.tealLight} tagColor={C.teal}>
+                  <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:10}}>
+                    {[["fecha","Fecha","date"],["peso","Peso (kg)","number"],["talla","Talla (m)","number"]].map(([k,l,t])=>(
+                      <div key={k} style={{display:"flex",flexDirection:"column",gap:2,flex:1,minWidth:110}}>
+                        <label style={{fontSize:10,fontWeight:700,color:C.textSoft,textTransform:"uppercase"}}>{l}</label>
+                        <input type={t} value={dashForm[k]} onChange={e=>updD(k,e.target.value)} style={{border:`1px solid ${C.border}`,borderRadius:7,padding:"7px 8px",fontSize:13,background:C.grayLight,outline:"none",color:C.text,width:"100%",boxSizing:"border-box"}}/>
+                      </div>
+                    ))}
+                    <div style={{display:"flex",flexDirection:"column",gap:2,flex:1,minWidth:130}}>
+                      <label style={{fontSize:10,fontWeight:700,color:C.red,textTransform:"uppercase"}}>Circ. Abd. (cm) <span style={{color:C.red}}>★SM</span></label>
+                      <input type="number" value={dashForm.circunferencia_abdominal} onChange={e=>updD("circunferencia_abdominal",e.target.value)} style={{border:`1px solid ${C.red}`,borderRadius:7,padding:"7px 8px",fontSize:13,background:C.grayLight,outline:"none",color:C.text,width:"100%",boxSizing:"border-box"}}/>
+                    </div>
+                    <div style={{display:"flex",flexDirection:"column",gap:2,flex:1,minWidth:100}}>
+                      <label style={{fontSize:10,fontWeight:700,color:C.textSoft,textTransform:"uppercase"}}>IMC</label>
+                      <div style={{display:"flex",gap:4}}>
+                        <input value={dashForm.imc} onChange={e=>updD("imc",e.target.value)} style={{flex:1,border:`1px solid ${C.border}`,borderRadius:7,padding:"7px 8px",fontSize:13,background:C.grayLight,outline:"none",color:C.text}}/>
+                        <button onClick={calcIMC} style={{background:C.teal,border:"none",borderRadius:7,padding:"7px 10px",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}>Calc</button>
+                      </div>
+                    </div>
+                    {[["pa_sistolica","PA Sist."],["pa_diastolica","PA Diast."]].map(([k,l])=>(
+                      <div key={k} style={{display:"flex",flexDirection:"column",gap:2,flex:1,minWidth:100}}>
+                        <label style={{fontSize:10,fontWeight:700,color:C.textSoft,textTransform:"uppercase"}}>{l}</label>
+                        <input type="number" value={dashForm[k]} onChange={e=>updD(k,e.target.value)} style={{border:`1px solid ${C.border}`,borderRadius:7,padding:"7px 8px",fontSize:13,background:C.grayLight,outline:"none",color:C.text,width:"100%",boxSizing:"border-box"}}/>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+
+                <Card title="Perfil Lipídico + Índice Aterogénico" icon="🧪" accent={C.purpleLight} tagColor={C.purple}>
+                  <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}>
+                    {[["colesterol_total","Colesterol T."],["hdl","HDL"],["ldl","LDL"],["vldl","VLDL"],["trigliceridos","Triglicéridos"]].map(([k,l])=>(
+                      <div key={k} style={{display:"flex",flexDirection:"column",gap:2,flex:1,minWidth:100}}>
+                        <label style={{fontSize:10,fontWeight:700,color:C.textSoft,textTransform:"uppercase"}}>{l}</label>
+                        <input type="number" value={dashForm[k]} onChange={e=>updD(k,e.target.value)} style={{border:`1px solid ${C.border}`,borderRadius:7,padding:"7px 8px",fontSize:13,background:C.grayLight,outline:"none",color:C.text,width:"100%",boxSizing:"border-box"}}/>
+                      </div>
+                    ))}
+                  </div>
+                  {(ateroForm.ct_hdl||ateroForm.ldl_hdl||ateroForm.tg_hdl)&&(
+                    <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:8}}>
+                      <AteroBadge label="CT/HDL"  value={ateroForm.ct_hdl}  riesgo={ateroForm.ct_hdl_riesgo}/>
+                      <AteroBadge label="LDL/HDL" value={ateroForm.ldl_hdl} riesgo={ateroForm.ldl_hdl_riesgo}/>
+                      <AteroBadge label="TG/HDL"  value={ateroForm.tg_hdl}  riesgo={ateroForm.tg_hdl_riesgo}/>
+                    </div>
+                  )}
+                </Card>
+
+                <Card title="Glucometría + Renal" icon="🍬" accent={C.amberLight} tagColor={C.amber}>
+                  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                    {[["glucosa_ayunas","Glucosa ayunas"],["hba1c","HbA1c (%)"],["acido_urico","Ác. Úrico"],["creatinina","Creatinina"]].map(([k,l])=>(
+                      <div key={k} style={{display:"flex",flexDirection:"column",gap:2,flex:1,minWidth:100}}>
+                        <label style={{fontSize:10,fontWeight:700,color:C.textSoft,textTransform:"uppercase"}}>{l}</label>
+                        <input type="number" value={dashForm[k]} onChange={e=>updD(k,e.target.value)} style={{border:`1px solid ${C.border}`,borderRadius:7,padding:"7px 8px",fontSize:13,background:C.grayLight,outline:"none",color:C.text,width:"100%",boxSizing:"border-box"}}/>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+
+                <Card title="Clasificación" icon="🏷" accent={C.redLight} tagColor={C.red}>
+                  <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+                    <Field label="Riesgo CV" value={dashForm.riesgo_cardiovascular} onChange={v=>updD("riesgo_cardiovascular",v)} type="select" options={["Bajo","Moderado","Alto","Muy alto"]}/>
+                    <Field label="Dx Metabólico" value={dashForm.dx_metabolico} onChange={v=>updD("dx_metabolico",v)} type="select" options={["Normal","Sobrepeso","Obesidad grado I","Obesidad grado II","Obesidad grado III","Síndrome metabólico","Diabetes mellitus tipo 2","Prediabetes","Hipertensión arterial","Dislipidemia mixta","Hipercolesterolemia","Hipertrigliceridemia","Hiperuricemia"]}/>
+                  </div>
+                </Card>
+
+                <div style={{display:"flex",gap:8,justifyContent:"flex-end",paddingBottom:24}}>
+                  <button onClick={()=>setDashVista("dashboard")} style={{background:C.grayLight,border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer",color:C.text}}>← Cancelar</button>
+                  <Btn label="💾 Guardar consulta" onClick={guardarMetabolico} color={C.green}/>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* EPIDEMIOLOGÍA */}
+        {vista==="epidemio"&&(()=>{
+          const empresas2=[...new Set(historial.map(h=>h.paciente.empresa).filter(Boolean))];
+          const base=busqEmpresa?historial.filter(h=>h.paciente.empresa===busqEmpresa):historial;
+          const gruposData=GRUPOS_RIESGO.map(g=>{
+            const pacs=base.filter(h=>clasificarGrupoRiesgo(h.antOcup?.exposiciones)===g.id);
+            const aptCount={Apto:0,"Apto con restricciones":0,"No apto":0};
+            pacs.forEach(h=>{const a=h.aptitud?.resultado||"";if(a==="Apto")aptCount.Apto++;else if(a.includes("restricciones"))aptCount["Apto con restricciones"]++;else if(a.includes("No apto"))aptCount["No apto"]++;});
+            const dxTop=Object.entries(pacs.reduce((acc,h)=>{const d=h.diagnostico?.cie10;if(d)acc[d]=(acc[d]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]).slice(0,3);
+            return{...g,count:pacs.length,aptCount,dxTop,pacs};
+          }).filter(g=>g.count>0||g.id==="sin_exposicion");
+          const dxCount={};base.forEach(h=>{const d=h.diagnostico?.cie10;if(d)dxCount[d]=(dxCount[d]||0)+1;});
+          const topDx=Object.entries(dxCount).sort((a,b)=>b[1]-a[1]).slice(0,8);
+          const aptCount={"Apto":0,"Apto con restricciones":0,"No apto temporal":0,"No apto permanente":0};
+          base.forEach(h=>{const a=h.aptitud?.resultado;if(a&&aptCount[a]!==undefined)aptCount[a]++;});
+          const icPendientes=historial.flatMap(h=>(h.interconsultas||[]).filter(ic=>ic.estado==="Pendiente").map(ic=>({...ic,paciente:h.paciente.nombre,empresa:h.paciente.empresa,fecha:h.fecha})));
+          const hoy=new Date();
+          const vencidos=historial.filter(h=>{if(!h.fecha)return false;const f=new Date(h.fecha);f.setFullYear(f.getFullYear()+1);return f<hoy;});
+          const proximos=historial.filter(h=>{if(!h.fecha)return false;const f=new Date(h.fecha);f.setFullYear(f.getFullYear()+1);const dias=Math.floor((f-hoy)/(1000*60*60*24));return dias>=0&&dias<=30;});
+          const grupoSelData=epiGrupo?gruposData.find(g=>g.id===epiGrupo):null;
+          return(
+            <div>
+              <div style={{display:"flex",gap:10,marginBottom:16,alignItems:"center",flexWrap:"wrap"}}>
+                <select style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 12px",fontSize:13,background:C.white,color:C.text}} value={busqEmpresa} onChange={e=>setBusqEmpresa(e.target.value)}>
+                  <option value="">Todas las empresas</option>{empresas2.map(e=><option key={e} value={e}>{e}</option>)}
+                </select>
+                <span style={{fontSize:12,color:C.textSoft}}>{base.length} paciente(s)</span>
+              </div>
+              <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
+                {[{label:"Total atendidos",val:base.length,c:C.blue,bg:C.blueLight,icon:"👥"},{label:"Aptos",val:aptCount["Apto"],c:C.green,bg:C.greenLight,icon:"✅"},{label:"Con restricciones",val:aptCount["Apto con restricciones"],c:C.amber,bg:C.amberLight,icon:"⚠"},{label:"No aptos",val:aptCount["No apto temporal"]+aptCount["No apto permanente"],c:C.red,bg:C.redLight,icon:"❌"},{label:"IC Pendientes",val:icPendientes.length,c:C.purple,bg:C.purpleLight,icon:"🔀"},{label:"Exámenes vencidos",val:vencidos.length,c:C.red,bg:C.redLight,icon:"📅"}].map(s=>(
+                  <div key={s.label} style={{flex:1,minWidth:100,background:s.bg,border:`1px solid ${s.c}33`,borderRadius:12,padding:"12px 10px",textAlign:"center"}}>
+                    <div style={{fontSize:18}}>{s.icon}</div>
+                    <div style={{fontSize:22,fontWeight:900,color:s.c,lineHeight:1}}>{s.val}</div>
+                    <div style={{fontSize:10,color:s.c,fontWeight:700,marginTop:2}}>{s.label}</div>
+                  </div>
+                ))}
+              </div>
+              <Card title="Vista por Grupo de Riesgo Ocupacional" icon="🏭" accent={C.amberLight} tagColor={C.amber} tag={`${gruposData.filter(g=>g.count>0).length} grupos activos`}>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:14}}>
+                  {gruposData.map(g=>(
+                    <button key={g.id} onClick={()=>setEpiGrupo(epiGrupo===g.id?"":g.id)}
+                      style={{flex:1,minWidth:100,borderRadius:10,padding:"10px 8px",border:`2px solid ${epiGrupo===g.id?g.color:C.border}`,background:epiGrupo===g.id?g.color+"18":"white",cursor:"pointer",textAlign:"center"}}>
+                      <div style={{fontSize:20}}>{g.icon}</div>
+                      <div style={{fontSize:11,fontWeight:700,color:epiGrupo===g.id?g.color:C.text,marginTop:2}}>{g.label}</div>
+                      <div style={{fontSize:18,fontWeight:900,color:g.color,lineHeight:1.2}}>{g.count}</div>
+                      <div style={{fontSize:9,color:C.textSoft}}>trabajador(es)</div>
+                    </button>
+                  ))}
+                </div>
+                {grupoSelData&&(
+                  <div style={{background:grupoSelData.color+"10",border:`1px solid ${grupoSelData.color}`,borderRadius:12,padding:14}}>
+                    <div style={{fontWeight:800,fontSize:14,color:grupoSelData.color,marginBottom:10}}>{grupoSelData.icon} {grupoSelData.label} — {grupoSelData.count} trabajador(es)</div>
+                    <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:10}}>
+                      {[["Aptos",grupoSelData.aptCount.Apto,C.green],["Restricciones",grupoSelData.aptCount["Apto con restricciones"],C.amber],["No aptos",grupoSelData.aptCount["No apto"],C.red]].map(([l,v,c])=>(
+                        <div key={l} style={{flex:1,minWidth:80,background:"white",borderRadius:8,padding:8,textAlign:"center",border:`1px solid ${c}33`}}>
+                          <div style={{fontSize:18,fontWeight:900,color:c}}>{v}</div>
+                          <div style={{fontSize:10,color:C.textSoft}}>{l}</div>
+                        </div>
+                      ))}
+                    </div>
+                    {grupoSelData.dxTop.length>0&&<div>{grupoSelData.dxTop.map(([dx,n],i)=>(
+                      <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:`1px solid ${grupoSelData.color}22`}}>
+                        <span style={{fontSize:11}}>{dx}</span><span style={{fontSize:11,fontWeight:700,color:grupoSelData.color}}>{n} caso(s)</span>
+                      </div>
+                    ))}</div>}
+                    <div style={{marginTop:10,display:"flex",gap:6,flexWrap:"wrap"}}>
+                      {grupoSelData.pacs.map(h=>(
+                        <div key={h.id} onClick={()=>{abrirHC(h);setVista("editor");}} style={{background:"white",border:`1px solid ${grupoSelData.color}`,borderRadius:7,padding:"4px 10px",fontSize:11,fontWeight:600,cursor:"pointer",color:grupoSelData.color}}>
+                          {h.paciente.nombre||h.paciente.dni||"—"}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </Card>
+              <div style={{display:"flex",gap:14,flexWrap:"wrap"}}>
+                <div style={{flex:1,minWidth:260}}>
+                  <Card title="Diagnósticos más frecuentes" icon="🏷" accent={C.blueLight} tagColor={C.blue} tag={`Top ${topDx.length}`}>
+                    {topDx.length===0?<div style={{color:C.textSoft,fontSize:12,textAlign:"center"}}>Sin datos</div>
+                    :topDx.map(([dx,n],i)=>(<div key={i} style={{marginBottom:8}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:11,flex:1}}>{dx}</span><span style={{fontSize:11,fontWeight:700,color:C.blue,marginLeft:8}}>{n}</span></div><div style={{background:C.border,borderRadius:4,height:6}}><div style={{background:C.blue,borderRadius:4,height:6,width:`${(n/topDx[0][1])*100}%`}}/></div></div>))}
+                  </Card>
+                </div>
+                <div style={{flex:1,minWidth:260}}>
+                  <Card title="Distribución de Aptitud" icon="✅" accent={C.greenLight} tagColor={C.green}>
+                    {Object.entries(aptCount).map(([k,v])=>(<div key={k} style={{marginBottom:8}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:11}}>{k}</span><span style={{fontSize:11,fontWeight:700,color:k==="Apto"?C.green:k.includes("restricciones")?C.amber:C.red}}>{v} ({base.length?((v/base.length)*100).toFixed(0):0}%)</span></div><div style={{background:C.border,borderRadius:4,height:6}}><div style={{background:k==="Apto"?C.green:k.includes("restricciones")?C.amber:C.red,borderRadius:4,height:6,width:base.length?`${(v/base.length)*100}%`:"0%"}}/></div></div>))}
+                  </Card>
+                </div>
+              </div>
+              {icPendientes.length>0&&(
+                <Card title="Interconsultas Pendientes" icon="🔀" accent={C.purpleLight} tagColor={C.purple} tag={`${icPendientes.length} sin respuesta`}>
+                  <div style={{overflowX:"auto"}}>
+                    <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                      <thead><tr style={{background:C.grayLight}}>{["Paciente","Empresa","Especialidad","Urgencia","Fecha HC"].map(h=>(<th key={h} style={{padding:"7px 10px",textAlign:"left",fontWeight:700,color:C.textSoft,borderBottom:`1px solid ${C.border}`,whiteSpace:"nowrap"}}>{h}</th>))}</tr></thead>
+                      <tbody>{icPendientes.map((ic,i)=>(<tr key={i} style={{borderBottom:`1px solid ${C.border}`,background:i%2===0?C.white:C.grayLight}}>
+                        <td style={{padding:"7px 10px",fontWeight:600}}>{ic.paciente}</td>
+                        <td style={{padding:"7px 10px",color:C.textSoft}}>{ic.empresa||"—"}</td>
+                        <td style={{padding:"7px 10px"}}>{ic.especialidad}</td>
+                        <td style={{padding:"7px 10px"}}><span style={{background:ic.urgencia==="Urgente"?C.red:ic.urgencia==="Preferente"?C.amber:C.gray,color:"#fff",borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700}}>{ic.urgencia}</span></td>
+                        <td style={{padding:"7px 10px",color:C.textSoft}}>{ic.fecha}</td>
+                      </tr>))}</tbody>
+                    </table>
+                  </div>
+                </Card>
+              )}
+              {(vencidos.length>0||proximos.length>0)&&(
+                <Card title="Alertas de Vencimiento" icon="📅" accent={C.redLight} tagColor={C.red} tag={`${vencidos.length+proximos.length} alertas`}>
+                  {[...vencidos.map(h=>({...h,tipo:"vencido"})),...proximos.map(h=>({...h,tipo:"proximo"}))].map((h,i)=>{
+                    const f=new Date(h.fecha);f.setFullYear(f.getFullYear()+1);const dias=Math.floor((f-hoy)/(1000*60*60*24));
+                    return(<div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
+                      <span style={{fontSize:16}}>{h.tipo==="vencido"?"🔴":"🟡"}</span>
+                      <div style={{flex:1}}><div style={{fontWeight:700,fontSize:13}}>{h.paciente.nombre}</div><div style={{fontSize:11,color:C.textSoft}}>{h.paciente.empresa||"—"}</div></div>
+                      <div style={{textAlign:"right"}}><div style={{fontSize:11,fontWeight:700,color:h.tipo==="vencido"?C.red:C.amber}}>{h.tipo==="vencido"?`Vencido hace ${Math.abs(dias)} días`:`Vence en ${dias} días`}</div></div>
+                      <button onClick={()=>abrirHC(h)} style={{background:C.blueLight,border:`1px solid ${C.blue}`,color:C.blue,borderRadius:7,padding:"4px 9px",cursor:"pointer",fontSize:11,fontWeight:700}}>Ver HC</button>
+                    </div>);
+                  })}
+                </Card>
+              )}
+            </div>
+          );
+        })()}
+
+      </div>
+      <div style={{textAlign:"center",padding:"14px 0",color:C.textSoft,fontSize:11,borderTop:`1px solid ${C.border}`}}>
+        <strong style={{color:C.blue}}>PANACEA MEDWEB</strong> · Dr. Miguel Wenceslao Ochoa Cuadros CMP 102517 · RNE/RNA 13334 · panaceamedocup@gmail.com · Arequipa, Perú
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
