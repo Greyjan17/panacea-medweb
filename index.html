@@ -12,18 +12,26 @@
     body{font-family:'Segoe UI',system-ui,sans-serif;background:#F5F9FF;color:#2D3748}
     input,select,textarea,button{font-family:inherit}
     ::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:#F7FAFC}::-webkit-scrollbar-thumb{background:#CBD5E0;border-radius:3px}
+    @keyframes micpulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.7;transform:scale(1.05)}}
   </style>
 </head>
 <body>
 <div id="root"></div>
 <script type="text/babel">
-const { useState, useRef, useEffect, useCallback, useMemo, memo } = React;
+var _useState=React.useState,_useRef=React.useRef,_useEffect=React.useEffect,_useCallback=React.useCallback,_useMemo=React.useMemo,_memo=React.memo;
+var useState=_useState,useRef=_useRef,useEffect=_useEffect,useCallback=_useCallback,useMemo=_useMemo,memo=_memo;
 
-const SUPA_URL = "https://xknursfrqomenfvikfdw.supabase.co";
-const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhrbnVyc2ZycW9tZW5mdmlrZmR3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4MjY3MjUsImV4cCI6MjA5MDQwMjcyNX0.AyyOqdot5s7DCnXZYvLQJgDqIwBCoQaaLTgKoPi303A";
-const SH = {"Content-Type":"application/json","apikey":SUPA_KEY,"Authorization":"Bearer "+SUPA_KEY};
+// ── Supabase ──────────────────────────────────────────────────
+var SUPA_URL="https://xknursfrqomenfvikfdw.supabase.co";
+var SUPA_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhrbnVyc2ZycW9tZW5mdmlrZmR3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4MjY3MjUsImV4cCI6MjA5MDQwMjcyNX0.AyyOqdot5s7DCnXZYvLQJgDqIwBCoQaaLTgKoPi303A";
+var SH={"Content-Type":"application/json","apikey":SUPA_KEY,"Authorization":"Bearer "+SUPA_KEY};
 
-const C = {
+// ── Speech ────────────────────────────────────────────────────
+var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+var hasSpeech=!!SR;
+
+// ── Paleta ────────────────────────────────────────────────────
+var C={
   bg:"#F5F9FF",white:"#FFFFFF",
   blue:"#4A90D9",blueLight:"#E8F2FF",
   teal:"#38B2AC",tealLight:"#E6FFFA",
@@ -32,63 +40,63 @@ const C = {
   red:"#FC8181",redLight:"#FFF5F5",
   purple:"#9F7AEA",purpleLight:"#FAF5FF",
   gray:"#718096",grayLight:"#F7FAFC",
-  border:"#E2E8F0",text:"#2D3748",textSoft:"#718096",
+  border:"#E2E8F0",text:"#2D3748",textSoft:"#718096"
 };
 
-const riskColor = function(l){return l==="Alto"||l==="Rojo"?C.red:l==="Moderado"||l==="Amarillo"?C.amber:l==="Bajo"||l==="Verde"?C.green:C.border;};
-const riskBg    = function(l){return l==="Alto"||l==="Rojo"?C.redLight:l==="Moderado"||l==="Amarillo"?C.amberLight:l==="Bajo"||l==="Verde"?C.greenLight:C.grayLight;};
+// ── Color helpers ─────────────────────────────────────────────
+function riskColor(l){return l==="Alto"||l==="Rojo"?C.red:l==="Moderado"||l==="Amarillo"?C.amber:l==="Bajo"||l==="Verde"?C.green:C.border;}
+function riskBg(l){return l==="Alto"||l==="Rojo"?C.redLight:l==="Moderado"||l==="Amarillo"?C.amberLight:l==="Bajo"||l==="Verde"?C.greenLight:C.grayLight;}
 
-const PARAM_RANGES = {
+var PR={
   imc:{min:18.5,max:24.9},pa_sistolica:{min:90,max:130},pa_diastolica:{min:60,max:85},
   colesterol_total:{min:0,max:200},hdl:{min:40,max:999,inv:true},ldl:{min:0,max:130},
   trigliceridos:{min:0,max:150},glucosa_ayunas:{min:70,max:100},hba1c:{min:0,max:5.7},
   acido_urico:{min:2.4,max:7.0},creatinina:{min:0.5,max:1.2},
-  pa:{min:90,max:140,parse:function(v){return parseInt((v||"").split("/")[0]);}},
-  fc:{min:60,max:100},fr:{min:12,max:20},temp:{min:36,max:37.5},
+  pa:{min:90,max:140,prs:function(v){return parseInt((v||"").split("/")[0]);}},
+  fc:{min:60,max:100},fr:{min:12,max:20},temp:{min:36,max:37.5}
 };
-
-function paramStatus(key,val){
-  if(!val)return{color:C.border,bg:C.grayLight};
-  var p=PARAM_RANGES[key];if(!p)return{color:C.border,bg:C.grayLight};
-  var n=p.parse?p.parse(val):parseFloat(val);if(isNaN(n))return{color:C.border,bg:C.grayLight};
+function pStatus(k,v){
+  if(!v)return{color:C.border,bg:C.grayLight};
+  var p=PR[k];if(!p)return{color:C.border,bg:C.grayLight};
+  var n=p.prs?p.prs(v):parseFloat(v);if(isNaN(n))return{color:C.border,bg:C.grayLight};
   if(p.inv){var c=n<p.min?C.red:C.green;return{color:c,bg:c+"18"};}
-  var c2=n>p.max?C.red:n<p.min?C.blue:C.green;return{color:c2,bg:c2+"18"};
+  var c2=n>p.max?C.red:n<p.min?C.blue:C.green;
+  return{color:c2,bg:c2+"18"};
 }
 
+// ── Cálculos ──────────────────────────────────────────────────
 function calcAtero(ct,hdl,ldl,tg){
   var r={};
-  if(ct&&hdl&&hdl>0){r.ct_hdl=(ct/hdl).toFixed(2);r.ct_hdl_riesgo=ct/hdl>5?"Alto":ct/hdl>3.5?"Moderado":"Bajo";}
-  if(ldl&&hdl&&hdl>0){r.ldl_hdl=(ldl/hdl).toFixed(2);r.ldl_hdl_riesgo=ldl/hdl>3.5?"Alto":ldl/hdl>2.5?"Moderado":"Bajo";}
-  if(tg&&hdl&&hdl>0){r.tg_hdl=(tg/hdl).toFixed(2);r.tg_hdl_riesgo=tg/hdl>3.8?"Alto":tg/hdl>2?"Moderado":"Bajo";}
-  var vals=[r.ct_hdl_riesgo,r.ldl_hdl_riesgo,r.tg_hdl_riesgo];
-  r.global=(!r.ct_hdl_riesgo&&!r.ldl_hdl_riesgo&&!r.tg_hdl_riesgo)?null:vals.includes("Alto")?"Alto":vals.includes("Moderado")?"Moderado":"Bajo";
+  if(ct&&hdl&&hdl>0){r.ct_hdl=(ct/hdl).toFixed(2);r.ct_hdl_r=ct/hdl>5?"Alto":ct/hdl>3.5?"Moderado":"Bajo";}
+  if(ldl&&hdl&&hdl>0){r.ldl_hdl=(ldl/hdl).toFixed(2);r.ldl_hdl_r=ldl/hdl>3.5?"Alto":ldl/hdl>2.5?"Moderado":"Bajo";}
+  if(tg&&hdl&&hdl>0){r.tg_hdl=(tg/hdl).toFixed(2);r.tg_hdl_r=tg/hdl>3.8?"Alto":tg/hdl>2?"Moderado":"Bajo";}
+  var vs=[r.ct_hdl_r,r.ldl_hdl_r,r.tg_hdl_r];
+  r.global=(!r.ct_hdl_r&&!r.ldl_hdl_r&&!r.tg_hdl_r)?null:vs.includes("Alto")?"Alto":vs.includes("Moderado")?"Moderado":"Bajo";
   return r;
 }
-
-function calcSM(row,sexo){
-  sexo=sexo||"M";
-  var tg=parseFloat(row.trigliceridos),hdl=parseFloat(row.hdl),gluc=parseFloat(row.glucosa_ayunas);
-  var pas=parseFloat(row.pa_sistolica),pad=parseFloat(row.pa_diastolica),ca=parseFloat(row.circunferencia_abdominal);
-  var criterios={
-    ca:!isNaN(ca)?(sexo==="M"?ca>=90:ca>=80):null,
+function calcSM(row,sx){
+  sx=sx||"M";
+  var tg=parseFloat(row.trigliceridos),hdl=parseFloat(row.hdl),gl=parseFloat(row.glucosa_ayunas);
+  var ps=parseFloat(row.pa_sistolica),pd=parseFloat(row.pa_diastolica),ca=parseFloat(row.circunferencia_abdominal);
+  var cr={
+    ca:!isNaN(ca)?(sx==="M"?ca>=90:ca>=80):null,
     tg:!isNaN(tg)?tg>=150:null,
-    hdl:!isNaN(hdl)?(sexo==="M"?hdl<40:hdl<50):null,
-    pa:(!isNaN(pas)&&!isNaN(pad))?(pas>=130||pad>=85):null,
-    gluc:!isNaN(gluc)?gluc>=100:null,
+    hdl:!isNaN(hdl)?(sx==="M"?hdl<40:hdl<50):null,
+    pa:(!isNaN(ps)&&!isNaN(pd))?(ps>=130||pd>=85):null,
+    gl:!isNaN(gl)?gl>=100:null
   };
-  var positivos=Object.values(criterios).filter(function(v){return v===true;}).length;
-  var otros=[criterios.tg,criterios.hdl,criterios.pa,criterios.gluc].filter(function(v){return v===true;}).length;
-  var dx="Sin criterios suficientes";
-  if(criterios.ca!==null){
-    if(criterios.ca&&otros>=2)dx="Síndrome Metabólico ✓";
-    else if(criterios.ca&&otros===1)dx="Riesgo SM (CA + 1 criterio)";
-    else if(criterios.ca)dx="Obesidad central sin SM";
+  var pos=Object.values(cr).filter(function(v){return v===true;}).length;
+  var ot=[cr.tg,cr.hdl,cr.pa,cr.gl].filter(function(v){return v===true;}).length;
+  var dx="Sin criterios";
+  if(cr.ca!==null){
+    if(cr.ca&&ot>=2)dx="Síndrome Metabólico ✓";
+    else if(cr.ca&&ot===1)dx="Riesgo SM (CA+1)";
+    else if(cr.ca)dx="Obesidad central sin SM";
     else dx="Sin SM (CA normal)";
-  }else{dx=positivos>=3?"Posible SM (sin CA)":"Sin criterios suficientes";}
-  return{criterios:criterios,positivos:positivos,dx:dx,caPos:criterios.ca===true,otros:otros};
+  }else{dx=pos>=3?"Posible SM (sin CA)":"Sin criterios";}
+  return{cr:cr,pos:pos,dx:dx,ot:ot};
 }
-
-function calcSemaforo(row){
+function calcSem(row){
   var a=0;
   if(row.imc>30)a+=2;else if(row.imc>25)a++;
   if(row.pa_sistolica>140||row.pa_diastolica>90)a+=2;else if(row.pa_sistolica>130)a++;
@@ -101,7 +109,6 @@ function calcSemaforo(row){
   if(row.acido_urico>7)a++;
   return a===0?"Verde":a<=3?"Amarillo":"Rojo";
 }
-
 function tend(a,b){
   if(!a||!b)return null;
   var d=((a-b)/b*100).toFixed(1);
@@ -109,7 +116,8 @@ function tend(a,b){
   return a>b?{icon:"↑",color:C.red,d:"+"+d}:{icon:"↓",color:C.green,d:d};
 }
 
-const PARAMS = {
+// ── Constantes ────────────────────────────────────────────────
+var PARAMS={
   imc:{label:"IMC",unit:"kg/m²",color:"#4A90D9"},
   pa_sistolica:{label:"PA Sist.",unit:"mmHg",color:"#E53E3E"},
   pa_diastolica:{label:"PA Diast.",unit:"mmHg",color:"#FC8181"},
@@ -120,65 +128,39 @@ const PARAMS = {
   glucosa_ayunas:{label:"Glucosa",unit:"mg/dL",color:"#ED8936"},
   hba1c:{label:"HbA1c",unit:"%",color:"#DD6B20"},
   acido_urico:{label:"Ác.Úrico",unit:"mg/dL",color:"#48BB78"},
-  creatinina:{label:"Creatinina",unit:"mg/dL",color:"#2F855A"},
+  creatinina:{label:"Creatinina",unit:"mg/dL",color:"#2F855A"}
 };
-
-const GRUPOS_RIESGO = [
-  {id:"ruido",label:"Ruido",icon:"🔊",keywords:["ruido","acústico","sonido"],color:"#F6AD55"},
-  {id:"quimico",label:"Químico",icon:"⚗️",keywords:["químico","quimico","solvente","plomo","polvo","humo","gas","vapores"],color:"#9F7AEA"},
-  {id:"ergonomico",label:"Ergonómico",icon:"🦴",keywords:["ergon","lumbar","postural","carga","vibración","vibracion"],color:"#38B2AC"},
-  {id:"psicosocial",label:"Psicosocial",icon:"🧠",keywords:["estrés","estres","psicosocial","turno","nocturno","ansiedad"],color:"#48BB78"},
-  {id:"biologico",label:"Biológico",icon:"🦠",keywords:["biológico","biologico","infeccioso","bacteria","sangre","fluido"],color:"#FC8181"},
-  {id:"fisico",label:"Físico",icon:"☀️",keywords:["temperatura","calor","frío","frio","radiación","radiacion","UV"],color:"#ED8936"},
-  {id:"sin_exposicion",label:"Sin exposición",icon:"📋",keywords:[],color:"#718096"},
+var GRUPOS=[
+  {id:"ruido",label:"Ruido",icon:"🔊",kw:["ruido","acústico","sonido"],color:"#F6AD55"},
+  {id:"quimico",label:"Químico",icon:"⚗️",kw:["químico","quimico","solvente","plomo","polvo","humo","gas"],color:"#9F7AEA"},
+  {id:"ergonomico",label:"Ergonómico",icon:"🦴",kw:["ergon","lumbar","postural","carga","vibración"],color:"#38B2AC"},
+  {id:"psicosocial",label:"Psicosocial",icon:"🧠",kw:["estrés","estres","psicosocial","turno","ansiedad"],color:"#48BB78"},
+  {id:"biologico",label:"Biológico",icon:"🦠",kw:["biológico","biologico","infeccioso","bacteria"],color:"#FC8181"},
+  {id:"fisico",label:"Físico",icon:"☀️",kw:["temperatura","calor","frío","frio","radiación","UV"],color:"#ED8936"},
+  {id:"sin_exp",label:"Sin exposición",icon:"📋",kw:[],color:"#718096"}
 ];
-function clasificarGrupo(exp){
-  if(!exp||!exp.trim())return"sin_exposicion";
+function clasGrupo(exp){
+  if(!exp||!exp.trim())return"sin_exp";
   var e=exp.toLowerCase();
-  var found=GRUPOS_RIESGO.find(function(g){return g.keywords.some(function(k){return e.includes(k);});});
-  return found?found.id:"sin_exposicion";
+  var f=GRUPOS.find(function(g){return g.kw.some(function(k){return e.includes(k);});});
+  return f?f.id:"sin_exp";
 }
+var CIE10=["J00 - Rinofaringitis aguda","J06.9 - Infección aguda vías resp.","A09 - Gastroenteritis","K29.7 - Gastritis","M54.5 - Lumbago","M54.2 - Cervicalgia","M79.1 - Mialgia","J45.9 - Asma","I10 - Hipertensión esencial","E11 - DM tipo 2","F41.1 - Ansiedad generalizada","F32.9 - Episodio depresivo","Z57.0 - Exposición ruido","Z57.5 - Exposición tóxicos","Z57.2 - Trabajo vibraciones"];
+var ESPEC=["Cardiología","Neumología","Gastroenterología","Neurología","Ortopedia/Traumatología","Dermatología","Oftalmología","Otorrinolaringología","Psiquiatría","Endocrinología","Urología","Ginecología","Medicina Interna","Cirugía General"];
 
-const CIE10=["J00 - Rinofaringitis aguda","J06.9 - Infección aguda vías resp.","A09 - Gastroenteritis","K29.7 - Gastritis","M54.5 - Lumbago","M54.2 - Cervicalgia","M79.1 - Mialgia","J45.9 - Asma","I10 - Hipertensión esencial","E11 - DM tipo 2","F41.1 - Ansiedad generalizada","F32.9 - Episodio depresivo","Z57.0 - Exposición ocupacional ruido","Z57.5 - Exposición tóxicos","Z57.2 - Trabajo con vibraciones"];
-const ESPECIALIDADES=["Cardiología","Neumología","Gastroenterología","Neurología","Ortopedia/Traumatología","Dermatología","Oftalmología","Otorrinolaringología","Psiquiatría","Endocrinología","Urología","Ginecología","Medicina Interna","Cirugía General"];
+// ── Supabase helpers ──────────────────────────────────────────
+function mapRow(r){return{id:r.id,fecha:r.fecha,paciente:r.paciente||{nombre:"",dni:"",edad:"",sexo:"M",empresa:"",cargo:""},anamnesis:r.anamnesis||{motivo:"",tEvol:"",sintomas:"",aiText:""},antOcup:r.ant_ocup||{exposiciones:"",tiempo:"",epps:"",aiText:""},exFisico:r.ex_fisico||{pa:"",fc:"",fr:"",temp:"",peso:"",talla:"",hallazgos:"",aiText:""},laboratorio:r.laboratorio||{aiText:"",resumen:""},diagnostico:r.diagnostico||{cie10:"",aiText:""},plan:r.plan||{indicaciones:"",aiText:""},aptitud:r.aptitud||{resultado:"Apto",restricciones:"",aiText:""},interconsultas:r.interconsultas||[],estado:r.estado||"borrador",fromEnf:r.from_enfermeria||false};}
+async function dbGetAll(){var r=await fetch(SUPA_URL+"/rest/v1/medweb_historial?order=updated_at.desc",{headers:SH});if(!r.ok)return null;var d=await r.json();return d.map(mapRow);}
+async function dbSave(hc){var row={id:hc.id,fecha:hc.fecha,paciente:hc.paciente,anamnesis:hc.anamnesis,ant_ocup:hc.antOcup,ex_fisico:hc.exFisico,laboratorio:hc.laboratorio,diagnostico:hc.diagnostico,plan:hc.plan,aptitud:hc.aptitud,interconsultas:hc.interconsultas,estado:hc.estado,from_enfermeria:hc.fromEnf,updated_at:new Date().toISOString()};return(await fetch(SUPA_URL+"/rest/v1/medweb_historial",{method:"POST",headers:Object.assign({},SH,{"Prefer":"resolution=merge-duplicates"}),body:JSON.stringify(row)})).ok;}
+async function dbDel(id){return(await fetch(SUPA_URL+"/rest/v1/medweb_historial?id=eq."+id,{method:"DELETE",headers:SH})).ok;}
+async function enfGetPend(){var r=await fetch(SUPA_URL+"/rest/v1/enfermeria_registros?estado=eq.pendiente&order=created_at.desc",{headers:SH});return r.ok?r.json():[];}
+async function enfMark(id){await fetch(SUPA_URL+"/rest/v1/enfermeria_registros?id=eq."+id,{method:"PATCH",headers:Object.assign({},SH,{"Prefer":"return=minimal"}),body:JSON.stringify({estado:"atendido"})});}
+async function metGet(dni){var r=await fetch(SUPA_URL+"/rest/v1/medweb_metabolico?paciente_dni=eq."+dni+"&order=fecha.asc",{headers:SH});return r.ok?r.json():[];}
+async function metSave(row){return(await fetch(SUPA_URL+"/rest/v1/medweb_metabolico",{method:"POST",headers:Object.assign({},SH,{"Prefer":"resolution=merge-duplicates"}),body:JSON.stringify(Object.assign({},row,{updated_at:new Date().toISOString()}))})).ok;}
+async function metDel(id){return(await fetch(SUPA_URL+"/rest/v1/medweb_metabolico?id=eq."+id,{method:"DELETE",headers:SH})).ok;}
 
-// Supabase helpers
-function mapRow(row){
-  return{
-    id:row.id,fecha:row.fecha,
-    paciente:row.paciente||{nombre:"",dni:"",edad:"",sexo:"M",empresa:"",cargo:""},
-    anamnesis:row.anamnesis||{motivo:"",tEvol:"",sintomas:"",aiText:""},
-    antOcup:row.ant_ocup||{exposiciones:"",tiempo:"",epps:"",aiText:""},
-    exFisico:row.ex_fisico||{pa:"",fc:"",fr:"",temp:"",peso:"",talla:"",hallazgos:"",aiText:""},
-    laboratorio:row.laboratorio||{aiText:"",resumen:""},
-    diagnostico:row.diagnostico||{cie10:"",aiText:""},
-    plan:row.plan||{indicaciones:"",aiText:""},
-    aptitud:row.aptitud||{resultado:"Apto",restricciones:"",aiText:""},
-    interconsultas:row.interconsultas||[],
-    estado:row.estado||"borrador",
-    fromEnfermeria:row.from_enfermeria||false,
-  };
-}
-async function dbGetHistorial(){
-  var r=await fetch(SUPA_URL+"/rest/v1/medweb_historial?order=updated_at.desc",{headers:SH});
-  if(!r.ok)return null;
-  var data=await r.json();
-  return data.map(mapRow);
-}
-async function dbUpsertHC(hc){
-  var row={id:hc.id,fecha:hc.fecha,paciente:hc.paciente,anamnesis:hc.anamnesis,ant_ocup:hc.antOcup,ex_fisico:hc.exFisico,laboratorio:hc.laboratorio,diagnostico:hc.diagnostico,plan:hc.plan,aptitud:hc.aptitud,interconsultas:hc.interconsultas,estado:hc.estado,from_enfermeria:hc.fromEnfermeria,updated_at:new Date().toISOString()};
-  var r=await fetch(SUPA_URL+"/rest/v1/medweb_historial",{method:"POST",headers:Object.assign({},SH,{"Prefer":"resolution=merge-duplicates"}),body:JSON.stringify(row)});
-  return r.ok;
-}
-async function dbDeleteHC(id){return(await fetch(SUPA_URL+"/rest/v1/medweb_historial?id=eq."+id,{method:"DELETE",headers:SH})).ok;}
-async function supaGetPendientes(){var r=await fetch(SUPA_URL+"/rest/v1/enfermeria_registros?estado=eq.pendiente&order=created_at.desc",{headers:SH});return r.ok?r.json():[];}
-async function supaMarkAtendido(id){await fetch(SUPA_URL+"/rest/v1/enfermeria_registros?id=eq."+id,{method:"PATCH",headers:Object.assign({},SH,{"Prefer":"return=minimal"}),body:JSON.stringify({estado:"atendido"})});}
-async function dbGetMetabolicoByDni(dni){var r=await fetch(SUPA_URL+"/rest/v1/medweb_metabolico?paciente_dni=eq."+dni+"&order=fecha.asc",{headers:SH});return r.ok?r.json():[];}
-async function dbUpsertMetabolico(row){var r=await fetch(SUPA_URL+"/rest/v1/medweb_metabolico",{method:"POST",headers:Object.assign({},SH,{"Prefer":"resolution=merge-duplicates"}),body:JSON.stringify(Object.assign({},row,{updated_at:new Date().toISOString()}))});return r.ok;}
-async function dbDeleteMetabolico(id){return(await fetch(SUPA_URL+"/rest/v1/medweb_metabolico?id=eq."+id,{method:"DELETE",headers:SH})).ok;}
-
-// Claude API
-async function callClaude(prompt,web){
+// ── Claude API ────────────────────────────────────────────────
+async function ai(prompt,web){
   var body={model:"claude-sonnet-4-20250514",max_tokens:1000,messages:[{role:"user",content:prompt}]};
   if(web)body.tools=[{type:"web_search_20250305",name:"web_search"}];
   var r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
@@ -186,337 +168,450 @@ async function callClaude(prompt,web){
   return d.content.filter(function(b){return b.type==="text";}).map(function(b){return b.text;}).join("\n");
 }
 async function readB64(file){return new Promise(function(res,rej){var r=new FileReader();r.onload=function(){res(r.result.split(",")[1]);};r.onerror=rej;r.readAsDataURL(file);});}
-async function callClaudePDF(b64,prompt){
+async function aiPDF(b64,prompt){
   var r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,messages:[{role:"user",content:[{type:"document",source:{type:"base64",media_type:"application/pdf",data:b64}},{type:"text",text:prompt}]}]})});
   var d=await r.json();
   return d.content.filter(function(b){return b.type==="text";}).map(function(b){return b.text;}).join("\n");
 }
 
-// Factories
-function emptyHC(){return{id:Date.now().toString(),fecha:new Date().toISOString().split("T")[0],paciente:{nombre:"",dni:"",edad:"",sexo:"M",empresa:"",cargo:""},anamnesis:{motivo:"",tEvol:"",sintomas:"",aiText:""},antOcup:{exposiciones:"",tiempo:"",epps:"",aiText:""},exFisico:{pa:"",fc:"",fr:"",temp:"",peso:"",talla:"",hallazgos:"",aiText:""},laboratorio:{aiText:"",resumen:""},diagnostico:{cie10:"",aiText:""},plan:{indicaciones:"",aiText:""},aptitud:{resultado:"Apto",restricciones:"",aiText:""},interconsultas:[],estado:"borrador",fromEnfermeria:false};}
-function emptyMetForm(){return{id:Date.now().toString(),fecha:new Date().toISOString().split("T")[0],tipo_consulta:"Asistencial",peso:"",talla:"",imc:"",circunferencia_abdominal:"",pa_sistolica:"",pa_diastolica:"",colesterol_total:"",hdl:"",ldl:"",vldl:"",trigliceridos:"",glucosa_ayunas:"",hba1c:"",acido_urico:"",creatinina:"",dx_metabolico:"Normal",riesgo_cardiovascular:"Bajo",observaciones:"",analisis_ia:""};}
+// ── Factories ─────────────────────────────────────────────────
+function eHC(){return{id:Date.now().toString(),fecha:new Date().toISOString().split("T")[0],paciente:{nombre:"",dni:"",edad:"",sexo:"M",empresa:"",cargo:""},anamnesis:{motivo:"",tEvol:"",sintomas:"",aiText:""},antOcup:{exposiciones:"",tiempo:"",epps:"",aiText:""},exFisico:{pa:"",fc:"",fr:"",temp:"",peso:"",talla:"",hallazgos:"",aiText:""},laboratorio:{aiText:"",resumen:""},diagnostico:{cie10:"",aiText:""},plan:{indicaciones:"",aiText:""},aptitud:{resultado:"Apto",restricciones:"",aiText:""},interconsultas:[],estado:"borrador",fromEnf:false};}
+function eMF(){return{id:Date.now().toString(),fecha:new Date().toISOString().split("T")[0],tipo_consulta:"Asistencial",peso:"",talla:"",imc:"",circunferencia_abdominal:"",pa_sistolica:"",pa_diastolica:"",colesterol_total:"",hdl:"",ldl:"",vldl:"",trigliceridos:"",glucosa_ayunas:"",hba1c:"",acido_urico:"",creatinina:"",dx_metabolico:"Normal",riesgo_cardiovascular:"Bajo",analisis_ia:""};}
 
 // ── Componentes ───────────────────────────────────────────────
-const Btn=memo(function({label,onClick,color,text,small,disabled}){
-  color=color||C.blue;text=text||"#fff";
-  return <button disabled={disabled} onClick={onClick} style={{borderRadius:8,padding:small?"5px 12px":"8px 16px",fontSize:small?11:12,fontWeight:700,cursor:disabled?"not-allowed":"pointer",border:"none",background:color,color:text,display:"inline-flex",alignItems:"center",gap:5,opacity:disabled?.6:1}}>{label}</button>;
-});
+function Btn(p){
+  var color=p.color||C.blue,txt=p.text||"#fff";
+  return React.createElement("button",{disabled:p.disabled,onClick:p.onClick,style:{borderRadius:8,padding:p.small?"5px 12px":"8px 16px",fontSize:p.small?11:12,fontWeight:700,cursor:p.disabled?"not-allowed":"pointer",border:"none",background:color,color:txt,display:"inline-flex",alignItems:"center",gap:5,opacity:p.disabled?0.6:1}},p.label);
+}
 
-const Card=memo(function({title,icon,tag,tagColor,children,accent}){
-  tagColor=tagColor||C.blue;accent=accent||C.blueLight;
-  return(
-    <div style={{background:C.white,border:"1px solid "+C.border,borderRadius:14,marginBottom:14,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,.05)"}}>
-      <div style={{background:accent,padding:"9px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:"1px solid "+C.border}}>
-        <span style={{fontWeight:700,fontSize:13,color:C.text}}>{icon} {title}</span>
-        {tag&&<span style={{background:tagColor+"22",color:tagColor,borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>{tag}</span>}
-      </div>
-      <div style={{padding:"14px 16px"}}>{children}</div>
-    </div>
+function Card(p){
+  var tc=p.tagColor||C.blue,ac=p.accent||C.blueLight;
+  return React.createElement("div",{style:{background:C.white,border:"1px solid "+C.border,borderRadius:14,marginBottom:14,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,.05)"}},
+    React.createElement("div",{style:{background:ac,padding:"9px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:"1px solid "+C.border}},
+      React.createElement("span",{style:{fontWeight:700,fontSize:13,color:C.text}},p.icon+" "+p.title),
+      p.tag&&React.createElement("span",{style:{background:tc+"22",color:tc,borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}},p.tag)
+    ),
+    React.createElement("div",{style:{padding:"14px 16px"}},p.children)
   );
-});
+}
 
-const Field=memo(function({label,value,onChange,type,options,full,readOnly,highlight}){
-  type=type||"text";
-  var base={border:"1px solid "+(highlight?C.red:C.border),borderRadius:8,padding:"8px 10px",fontSize:13,outline:"none",color:C.text,width:"100%",boxSizing:"border-box"};
-  return(
-    <div style={{display:"flex",flexDirection:"column",gap:3,flex:1,minWidth:full?"100%":150,...(full?{flex:"1 1 100%"}:{})}}>
-      <label style={{fontSize:11,fontWeight:700,color:C.textSoft,textTransform:"uppercase",letterSpacing:.3}}>{label}</label>
-      {type==="textarea"?<textarea value={value} onChange={function(e){onChange&&onChange(e.target.value);}} style={{...base,background:C.grayLight,resize:"vertical",minHeight:72,fontFamily:"inherit"}}/>
-      :type==="select"?<select value={value} onChange={function(e){onChange&&onChange(e.target.value);}} style={{...base,background:C.grayLight}}>{(options||[]).map(function(o){return <option key={o} value={o}>{o}</option>;})}</select>
-      :<input type={type} value={value} onChange={function(e){onChange&&onChange(e.target.value);}} readOnly={readOnly} style={{...base,background:readOnly?C.blueLight:C.grayLight}}/>}
-    </div>
+function Field(p){
+  var t=p.type||"text";
+  var base={border:"1px solid "+(p.highlight?C.red:C.border),borderRadius:8,padding:"8px 10px",fontSize:13,outline:"none",color:C.text,background:p.readOnly?C.blueLight:C.grayLight,width:"100%",boxSizing:"border-box"};
+  var lbl=React.createElement("label",{style:{fontSize:11,fontWeight:700,color:C.textSoft,textTransform:"uppercase",letterSpacing:.3}},p.label);
+  var inp;
+  if(t==="textarea"){inp=React.createElement("textarea",{value:p.value,onChange:function(e){p.onChange&&p.onChange(e.target.value);},style:Object.assign({},base,{resize:"vertical",minHeight:72,fontFamily:"inherit"})});}
+  else if(t==="select"){inp=React.createElement("select",{value:p.value,onChange:function(e){p.onChange&&p.onChange(e.target.value);},style:base},(p.options||[]).map(function(o){return React.createElement("option",{key:o,value:o},o);}));}
+  else{inp=React.createElement("input",{type:t,value:p.value,onChange:function(e){p.onChange&&p.onChange(e.target.value);},readOnly:p.readOnly,style:base});}
+  return React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:3,flex:1,minWidth:p.full?"100%":150,...(p.full?{flex:"1 1 100%"}:{})}},lbl,inp);
+}
+
+function AIBox(p){
+  if(p.loading)return React.createElement("div",{style:{color:C.blue,fontSize:12,fontStyle:"italic",marginTop:7}},"⏳ IA procesando...");
+  if(!p.text)return null;
+  return React.createElement("div",{style:{background:C.blueLight,border:"1px solid "+C.blue,borderRadius:8,padding:"9px 12px",fontSize:12,color:C.text,marginTop:7,lineHeight:1.6}},React.createElement("strong",{style:{color:C.blue}},"✦ IA: "),p.text);
+}
+
+function BV(p){
+  return React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:2,flex:1,minWidth:90}},
+    React.createElement("label",{style:{fontSize:10,fontWeight:700,color:C.textSoft,textTransform:"uppercase"}},p.label),
+    React.createElement("div",{style:{border:"2px solid "+(p.color||C.border),borderRadius:8,padding:"6px 10px",fontSize:13,fontWeight:700,color:p.color||C.text,background:p.bg||C.grayLight}},p.value||"—")
   );
-});
+}
 
-const AIResult=memo(function({text,loading}){
-  if(loading)return <div style={{color:C.blue,fontSize:12,fontStyle:"italic",marginTop:7}}>⏳ IA procesando...</div>;
-  if(!text)return null;
-  return <div style={{background:C.blueLight,border:"1px solid "+C.blue,borderRadius:8,padding:"9px 12px",fontSize:12,color:C.text,marginTop:7,lineHeight:1.6}}><strong style={{color:C.blue}}>✦ IA:</strong> {text}</div>;
-});
-
-const BadgeValue=memo(function({label,value,color,bg}){
-  return(
-    <div style={{display:"flex",flexDirection:"column",gap:2,flex:1,minWidth:90}}>
-      <label style={{fontSize:10,fontWeight:700,color:C.textSoft,textTransform:"uppercase"}}>{label}</label>
-      <div style={{border:"2px solid "+(color||C.border),borderRadius:8,padding:"6px 10px",fontSize:13,fontWeight:700,color:color||C.text,background:bg||C.grayLight}}>{value||"—"}</div>
-    </div>
+function AB(p){
+  if(!p.value)return null;
+  return React.createElement("div",{style:{flex:1,minWidth:110,background:riskBg(p.riesgo),border:"1px solid "+riskColor(p.riesgo),borderRadius:10,padding:"10px 12px",textAlign:"center"}},
+    React.createElement("div",{style:{fontSize:10,fontWeight:700,color:C.textSoft,textTransform:"uppercase",marginBottom:3}},p.label),
+    React.createElement("div",{style:{fontSize:20,fontWeight:900,color:riskColor(p.riesgo)}},p.value),
+    React.createElement("div",{style:{fontSize:10,fontWeight:700,color:riskColor(p.riesgo),marginTop:2}},p.riesgo)
   );
-});
+}
 
-const AteroBadge=memo(function({label,value,riesgo}){
-  if(!value)return null;
-  return(
-    <div style={{flex:1,minWidth:110,background:riskBg(riesgo),border:"1px solid "+riskColor(riesgo),borderRadius:10,padding:"10px 12px",textAlign:"center"}}>
-      <div style={{fontSize:10,fontWeight:700,color:C.textSoft,textTransform:"uppercase",marginBottom:3}}>{label}</div>
-      <div style={{fontSize:20,fontWeight:900,color:riskColor(riesgo)}}>{value}</div>
-      <div style={{fontSize:10,fontWeight:700,color:riskColor(riesgo),marginTop:2}}>{riesgo}</div>
-    </div>
+function SMB(p){
+  if(p.noEval)return React.createElement("div",{style:{flex:1,minWidth:130,background:C.grayLight,border:"1px solid "+C.border,borderRadius:8,padding:"8px 10px"}},React.createElement("div",{style:{fontSize:10,fontWeight:700,color:C.textSoft,textTransform:"uppercase"}},p.label),React.createElement("div",{style:{fontSize:11,color:C.gray,marginTop:2}},"No evaluado"));
+  var c=p.positivo?C.red:C.green;
+  return React.createElement("div",{style:{flex:1,minWidth:130,background:p.positivo?C.redLight:C.greenLight,border:"1px solid "+c,borderRadius:8,padding:"8px 10px"}},
+    React.createElement("div",{style:{fontSize:10,fontWeight:700,color:C.textSoft,textTransform:"uppercase"}},p.label),
+    React.createElement("div",{style:{fontSize:12,fontWeight:700,color:c,marginTop:2}},p.positivo?"✗ Alterado":"✓ Normal"),
+    p.valor&&React.createElement("div",{style:{fontSize:11,color:C.textSoft,marginTop:1}},p.valor)
   );
-});
+}
 
-const SMBadge=memo(function({label,positivo,valor,noEval}){
-  if(noEval)return(<div style={{flex:1,minWidth:130,background:C.grayLight,border:"1px solid "+C.border,borderRadius:8,padding:"8px 10px"}}><div style={{fontSize:10,fontWeight:700,color:C.textSoft,textTransform:"uppercase"}}>{label}</div><div style={{fontSize:11,color:C.gray,marginTop:2}}>No evaluado</div></div>);
-  var c=positivo?C.red:C.green;
-  return(<div style={{flex:1,minWidth:130,background:positivo?C.redLight:C.greenLight,border:"1px solid "+c,borderRadius:8,padding:"8px 10px"}}><div style={{fontSize:10,fontWeight:700,color:C.textSoft,textTransform:"uppercase"}}>{label}</div><div style={{fontSize:12,fontWeight:700,color:c,marginTop:2}}>{positivo?"✗ Alterado":"✓ Normal"}</div>{valor&&<div style={{fontSize:11,color:C.textSoft,marginTop:1}}>{valor}</div>}</div>);
-});
+// ── Botón mic individual (dicta en un campo) ──────────────────
+function MicBtn(p){
+  var active=useState(false);var isActive=active[0];var setActive=active[1];
+  var recRef=useRef(null);
+  function toggle(){
+    if(isActive){
+      if(recRef.current){try{recRef.current.stop();}catch(e){}}
+      recRef.current=null;setActive(false);
+    }else{
+      if(!hasSpeech){alert("Usa Chrome o Edge para dictado por voz.");return;}
+      var rec=new SR();
+      rec.lang="es-PE";rec.continuous=true;rec.interimResults=false;
+      rec.onresult=function(e){
+        var t=Array.from(e.results).map(function(r){return r[0].transcript;}).join(" ");
+        p.onAppend(t);
+      };
+      rec.onerror=function(){setActive(false);};
+      rec.onend=function(){setActive(false);};
+      recRef.current=rec;rec.start();setActive(true);
+    }
+  }
+  return React.createElement("button",{
+    onClick:toggle,
+    title:isActive?"Detener dictado":"Dictar por voz",
+    style:{background:isActive?"#FC8181":"#E8F2FF",border:"1px solid "+(isActive?"#FC8181":"#4A90D9"),borderRadius:7,padding:"5px 9px",cursor:"pointer",fontSize:15,lineHeight:1,flexShrink:0,alignSelf:"flex-end",marginBottom:1,animation:isActive?"micpulse 1s infinite":"none"}
+  },isActive?"⏹":"🎙");
+}
 
-// Gráfico SVG nativo (reemplaza Recharts)
-const LineChartSVG=memo(function({data,params,paramsMeta,refLines}){
-  var W=600,H=220,padL=40,padR=20,padT=10,padB=30;
-  var chartW=W-padL-padR,chartH=H-padT-padB;
-  if(!data||data.length<2)return <div style={{textAlign:"center",padding:20,color:C.textSoft,fontSize:12}}>Se necesitan al menos 2 consultas para mostrar el gráfico</div>;
-
-  var allVals=[];
-  data.forEach(function(d){params.forEach(function(k){var v=parseFloat(d[k]);if(!isNaN(v))allVals.push(v);});});
-  if(refLines)refLines.forEach(function(r){allVals.push(r.y);});
-  var minV=Math.min.apply(null,allVals)*0.9,maxV=Math.max.apply(null,allVals)*1.1;
-  if(minV===maxV){minV=minV*0.8;maxV=maxV*1.2;}
-
-  function xPos(i){return padL+i*(chartW/(data.length-1));}
-  function yPos(v){return padT+chartH-(((v-minV)/(maxV-minV))*chartH);}
-
-  return(
-    <div style={{overflowX:"auto"}}>
-      <svg viewBox={"0 0 "+W+" "+H} style={{width:"100%",maxWidth:W,display:"block"}}>
-        {/* Grid */}
-        {[0,.25,.5,.75,1].map(function(t,i){
-          var y=padT+t*chartH;
-          return <line key={i} x1={padL} y1={y} x2={W-padR} y2={y} stroke={C.border} strokeDasharray="3 3"/>;
-        })}
-        {/* Y labels */}
-        {[0,.5,1].map(function(t,i){
-          var v=(minV+(1-t)*(maxV-minV)).toFixed(0);
-          var y=padT+t*chartH;
-          return <text key={i} x={padL-4} y={y+4} textAnchor="end" fontSize={9} fill={C.textSoft}>{v}</text>;
-        })}
-        {/* X labels */}
-        {data.map(function(d,i){
-          return <text key={i} x={xPos(i)} y={H-4} textAnchor="middle" fontSize={9} fill={C.textSoft}>{d.fecha?d.fecha.slice(5):""}</text>;
-        })}
-        {/* Ref lines */}
-        {(refLines||[]).map(function(r,i){
-          var y=yPos(r.y);
-          return(<g key={i}><line x1={padL} y1={y} x2={W-padR} y2={y} stroke={r.color} strokeDasharray="6 3" strokeWidth={1.5}/><text x={W-padR+2} y={y+4} fontSize={8} fill={r.color}>{r.label}</text></g>);
-        })}
-        {/* Lines */}
-        {params.map(function(k){
-          var meta=paramsMeta[k];
-          var pts=data.map(function(d,i){var v=parseFloat(d[k]);return isNaN(v)?null:{x:xPos(i),y:yPos(v)};});
-          var segments=[];
-          for(var i=0;i<pts.length-1;i++){if(pts[i]&&pts[i+1])segments.push(i);}
-          return(
-            <g key={k}>
-              {segments.map(function(i){return <line key={i} x1={pts[i].x} y1={pts[i].y} x2={pts[i+1].x} y2={pts[i+1].y} stroke={meta.color} strokeWidth={2}/>;}) }
-              {pts.map(function(p,i){return p?<circle key={i} cx={p.x} cy={p.y} r={3} fill={meta.color}/>:null;})}
-            </g>
-          );
-        })}
-      </svg>
-      {/* Leyenda */}
-      <div style={{display:"flex",gap:12,flexWrap:"wrap",marginTop:8,paddingLeft:padL}}>
-        {params.map(function(k){return(<div key={k} style={{display:"flex",alignItems:"center",gap:4,fontSize:11}}><div style={{width:16,height:3,background:paramsMeta[k].color,borderRadius:2}}></div><span style={{color:C.textSoft}}>{paramsMeta[k].label}</span></div>);})}
-      </div>
-    </div>
+// ── Gráfico SVG nativo ────────────────────────────────────────
+function ChartSVG(p){
+  var W=580,H=200,pL=38,pR=24,pT=8,pB=28,cW=W-pL-pR,cH=H-pT-pB;
+  var data=p.data||[],params=p.params||[],meta=p.meta||{},refs=p.refs||[];
+  if(data.length<2)return React.createElement("div",{style:{textAlign:"center",padding:16,color:C.textSoft,fontSize:12}},"Se necesitan al menos 2 consultas para el gráfico");
+  var allV=[];
+  data.forEach(function(d){params.forEach(function(k){var v=parseFloat(d[k]);if(!isNaN(v))allV.push(v);});});
+  refs.forEach(function(r){allV.push(r.y);});
+  if(!allV.length)return null;
+  var minV=Math.min.apply(null,allV)*0.9,maxV=Math.max.apply(null,allV)*1.1;
+  if(minV===maxV){minV*=0.8;maxV*=1.2;}
+  function xp(i){return pL+i*(cW/(data.length-1));}
+  function yp(v){return pT+cH-(((v-minV)/(maxV-minV))*cH);}
+  var elems=[];
+  // grid
+  [0,0.25,0.5,0.75,1].forEach(function(t,i){
+    elems.push(React.createElement("line",{key:"g"+i,x1:pL,y1:pT+t*cH,x2:W-pR,y2:pT+t*cH,stroke:C.border,strokeDasharray:"3 3"}));
+  });
+  // y labels
+  [0,0.5,1].forEach(function(t,i){
+    var v=(minV+(1-t)*(maxV-minV)).toFixed(0);
+    elems.push(React.createElement("text",{key:"yl"+i,x:pL-3,y:pT+t*cH+4,textAnchor:"end",fontSize:9,fill:C.textSoft},v));
+  });
+  // x labels
+  data.forEach(function(d,i){
+    elems.push(React.createElement("text",{key:"xl"+i,x:xp(i),y:H-4,textAnchor:"middle",fontSize:9,fill:C.textSoft},d.fecha?d.fecha.slice(5):""));
+  });
+  // ref lines
+  refs.forEach(function(r,i){
+    elems.push(React.createElement("line",{key:"rl"+i,x1:pL,y1:yp(r.y),x2:W-pR,y2:yp(r.y),stroke:r.color,strokeDasharray:"5 3",strokeWidth:1.5}));
+    elems.push(React.createElement("text",{key:"rt"+i,x:W-pR+2,y:yp(r.y)+4,fontSize:8,fill:r.color},r.label));
+  });
+  // lines + dots
+  params.forEach(function(k){
+    var m=meta[k];if(!m)return;
+    var pts=data.map(function(d,i){var v=parseFloat(d[k]);return isNaN(v)?null:{x:xp(i),y:yp(v)};});
+    for(var i=0;i<pts.length-1;i++){
+      if(pts[i]&&pts[i+1])elems.push(React.createElement("line",{key:k+"l"+i,x1:pts[i].x,y1:pts[i].y,x2:pts[i+1].x,y2:pts[i+1].y,stroke:m.color,strokeWidth:2}));
+    }
+    pts.forEach(function(pt,i){
+      if(pt)elems.push(React.createElement("circle",{key:k+"d"+i,cx:pt.x,cy:pt.y,r:3,fill:m.color}));
+    });
+  });
+  var legend=params.map(function(k){
+    var m=meta[k];if(!m)return null;
+    return React.createElement("div",{key:k,style:{display:"flex",alignItems:"center",gap:4,fontSize:10}},
+      React.createElement("div",{style:{width:14,height:3,background:m.color,borderRadius:2}}),
+      React.createElement("span",{style:{color:C.textSoft}},m.label)
+    );
+  });
+  return React.createElement("div",null,
+    React.createElement("div",{style:{overflowX:"auto"}},React.createElement("svg",{viewBox:"0 0 "+W+" "+H,style:{width:"100%",maxWidth:W,display:"block"}},elems)),
+    React.createElement("div",{style:{display:"flex",gap:10,flexWrap:"wrap",marginTop:8,paddingLeft:pL}},legend)
   );
-});
-
-const HCSection=memo(function({title,icon,tag,tagColor,accent,children,aiText,aiLoading,onAI,aiLabel,onAIEdit}){
-  return(
-    <Card title={title} icon={icon} tag={tag} tagColor={tagColor} accent={accent}>
-      {children}
-      <div style={{marginTop:8}}><Btn label={aiLabel||"✦ Redactar con IA"} onClick={onAI} color={C.blue} small/></div>
-      <AIResult text={aiText} loading={aiLoading}/>
-      {aiText&&onAIEdit&&<div style={{marginTop:8}}><Field label="✏ Editar" value={aiText} onChange={onAIEdit} type="textarea" full/></div>}
-    </Card>
-  );
-});
+}
 
 // ── APP ───────────────────────────────────────────────────────
 function App(){
-  const [vista,setVista]=useState("historial");
-  const [historial,setHistorial]=useState([]);
-  const [hc,setHC]=useState(emptyHC());
-  const [ldg,setLdg]=useState({});
-  const [notif,setNotif]=useState("");
-  const [busqPac,setBusqPac]=useState("");
-  const [busqFecha,setBusqFecha]=useState("");
-  const [busqEmpresa,setBusqEmpresa]=useState("");
-  const [dbOnline,setDbOnline]=useState(null);
-  const [pendientesEnf,setPendientesEnf]=useState(0);
-  const [loadingDB,setLoadingDB]=useState(true);
-  const [dashPac,setDashPac]=useState(null);
-  const [dashConsultas,setDashConsultas]=useState([]);
-  const [dashBusq,setDashBusq]=useState("");
-  const [dashForm,setDashForm]=useState(emptyMetForm());
-  const [dashVista,setDashVista]=useState("buscar");
-  const [dashParamsSel,setDashParamsSel]=useState(["imc","colesterol_total","trigliceridos","glucosa_ayunas"]);
-  const [loadingIA,setLoadingIA]=useState(false);
-  const [epiGrupo,setEpiGrupo]=useState("");
-  const labRef=useRef(),pollRef=useRef();
+  var s=useState("historial"),vista=s[0],setVista=s[1];
+  var s2=useState([]),hist=s2[0],setHist=s2[1];
+  var s3=useState(eHC()),hc=s3[0],setHC=s3[1];
+  var s4=useState({}),ldg=s4[0],setLdg=s4[1];
+  var s5=useState(""),notif=s5[0],setNotif=s5[1];
+  var s6=useState(""),bPac=s6[0],setBPac=s6[1];
+  var s7=useState(""),bFecha=s7[0],setBFecha=s7[1];
+  var s8=useState(""),bEmp=s8[0],setBEmp=s8[1];
+  var s9=useState(null),dbOk=s9[0],setDbOk=s9[1];
+  var s10=useState(0),pendEnf=s10[0],setPendEnf=s10[1];
+  var s11=useState(true),ldgDB=s11[0],setLdgDB=s11[1];
+  var s12=useState(null),dashPac=s12[0],setDashPac=s12[1];
+  var s13=useState([]),dashC=s13[0],setDashC=s13[1];
+  var s14=useState(""),dashBusq=s14[0],setDashBusq=s14[1];
+  var s15=useState(eMF()),dashF=s15[0],setDashF=s15[1];
+  var s16=useState("buscar"),dashV=s16[0],setDashV=s16[1];
+  var s17=useState(["imc","colesterol_total","trigliceridos","glucosa_ayunas"]),pSel=s17[0],setPSel=s17[1];
+  var s18=useState(false),ldgIA=s18[0],setLdgIA=s18[1];
+  var s19=useState(""),epiG=s19[0],setEpiG=s19[1];
+  var s24=useState(""),filtApt=s24[0],setFiltApt=s24[1];
+  // dictado global
+  var s20=useState(""),dictTxt=s20[0],setDictTxt=s20[1];
+  var s21=useState(false),dictActive=s21[0],setDictActive=s21[1];
+  var s22=useState(false),dictProc=s22[0],setDictProc=s22[1];
+  var s23=useState(""),autoTs=s23[0],setAutoTs=s23[1];
 
-  const cargarHistorial=useCallback(async function(){
-    var rows=await dbGetHistorial();
-    if(rows===null){setDbOnline(false);return;}
-    setDbOnline(true);setHistorial(rows);
+  var labRef=useRef(),pollRef=useRef(),autoRef=useRef(),dictRef=useRef();
+
+  // DB
+  var reload=useCallback(async function(){
+    var rows=await dbGetAll();
+    if(rows===null){setDbOk(false);return;}
+    setDbOk(true);setHist(rows);
   },[]);
 
-  const checkPendientes=useCallback(async function(){
-    try{var rows=await supaGetPendientes();setPendientesEnf(rows.filter(function(r){return!historial.find(function(h){return h.id===r.id;});}).length);}catch(e){}
-  },[historial]);
+  useEffect(function(){(async function(){setLdgDB(true);await reload();setLdgDB(false);})();},[]);
 
-  useEffect(function(){(async function(){setLoadingDB(true);await cargarHistorial();setLoadingDB(false);})();},[]);
   useEffect(function(){
-    checkPendientes();
-    pollRef.current=setInterval(checkPendientes,30000);
+    function chk(){enfGetPend().then(function(rows){setPendEnf(rows.filter(function(r){return!hist.find(function(h){return h.id===r.id;});}).length);}).catch(function(){});}
+    chk();pollRef.current=setInterval(chk,30000);
     return function(){clearInterval(pollRef.current);};
-  },[historial]);
+  },[hist]);
 
-  const toast=useCallback(function(msg){setNotif(msg);setTimeout(function(){setNotif("");},3500);},[]);
-  const setL=useCallback(function(k,v){setLdg(function(l){return Object.assign({},l,{[k]:v});});},[]);
-  const upd=useCallback(function(sec,k,v){setHC(function(h){return Object.assign({},h,{[sec]:Object.assign({},h[sec],{[k]:v})});});},[]);
-  const updD=useCallback(function(k,v){setDashForm(function(f){return Object.assign({},f,{[k]:v});});},[]);
+  // Autoguardado cada 2 min
+  useEffect(function(){
+    autoRef.current=setInterval(function(){
+      if(vista==="editor"&&hc.paciente.nombre){
+        dbSave(Object.assign({},hc,{estado:hc.estado==="guardada"?"guardada":"borrador"})).then(function(ok){
+          if(ok)setAutoTs(new Date().toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"}));
+        });
+      }
+    },120000);
+    return function(){clearInterval(autoRef.current);};
+  },[vista,hc]);
 
-  const imcVal=useCallback(function(){var p=parseFloat(hc.exFisico.peso),t=parseFloat(hc.exFisico.talla);return(p&&t)?(p/(t*t)).toFixed(1):"—";},[hc.exFisico.peso,hc.exFisico.talla]);
+  function toast(m){setNotif(m);setTimeout(function(){setNotif("");},3500);}
+  function setL(k,v){setLdg(function(l){return Object.assign({},l,{[k]:v});});}
+  function upd(sec,k,v){setHC(function(h){var s=Object.assign({},h[sec],{[k]:v});return Object.assign({},h,{[sec]:s});});}
+  function updD(k,v){setDashF(function(f){return Object.assign({},f,{[k]:v});});}
+  function imc(){var p=parseFloat(hc.exFisico.peso),t=parseFloat(hc.exFisico.talla);return(p&&t)?(p/(t*t)).toFixed(1):"—";}
 
-  const empresas=useMemo(function(){return[...new Set(historial.map(function(h){return h.paciente.empresa;}).filter(Boolean))];},[historial]);
-  const filtrados=useMemo(function(){
-    var q=busqPac.toLowerCase();
-    return historial.filter(function(h){
-      var match=h.paciente.nombre.toLowerCase().includes(q)||h.paciente.dni.includes(q);
-      return match&&(busqFecha?h.fecha===busqFecha:true)&&(busqEmpresa?h.paciente.empresa===busqEmpresa:true);
+  var empresas=useMemo(function(){return Array.from(new Set(hist.map(function(h){return h.paciente.empresa;}).filter(Boolean)));;},[hist]);
+  var filtrados=useMemo(function(){
+    var q=bPac.toLowerCase();
+    return hist.filter(function(h){
+      var aptMatch=filtApt?h.aptitud&&h.aptitud.resultado&&h.aptitud.resultado.includes(filtApt):true;return(h.paciente.nombre.toLowerCase().includes(q)||h.paciente.dni.includes(q))&&(bFecha?h.fecha===bFecha:true)&&(bEmp?h.paciente.empresa===bEmp:true)&&aptMatch;
     });
-  },[historial,busqPac,busqFecha,busqEmpresa]);
+  },[hist,bPac,bFecha,bEmp]);
+  var ultiC=useMemo(function(){return dashC[dashC.length-1];},[dashC]);
+  var atero=useMemo(function(){return ultiC?calcAtero(parseFloat(ultiC.colesterol_total),parseFloat(ultiC.hdl),parseFloat(ultiC.ldl),parseFloat(ultiC.trigliceridos)):{};;},[ultiC]);
+  var sm=useMemo(function(){return ultiC?calcSM(ultiC,dashPac&&dashPac.paciente?dashPac.paciente.sexo:"M"):null;},[ultiC,dashPac]);
+  var ateroF=useMemo(function(){return calcAtero(parseFloat(dashF.colesterol_total),parseFloat(dashF.hdl),parseFloat(dashF.ldl),parseFloat(dashF.trigliceridos));},[dashF.colesterol_total,dashF.hdl,dashF.ldl,dashF.trigliceridos]);
 
-  const ultimaC=useMemo(function(){return dashConsultas[dashConsultas.length-1];},[dashConsultas]);
-  const atero=useMemo(function(){return ultimaC?calcAtero(parseFloat(ultimaC.colesterol_total),parseFloat(ultimaC.hdl),parseFloat(ultimaC.ldl),parseFloat(ultimaC.trigliceridos)):{};},[ ultimaC]);
-  const sm=useMemo(function(){return ultimaC?calcSM(ultimaC,dashPac&&dashPac.paciente?dashPac.paciente.sexo:"M"):null;},[ultimaC,dashPac]);
-  const ateroForm=useMemo(function(){return calcAtero(parseFloat(dashForm.colesterol_total),parseFloat(dashForm.hdl),parseFloat(dashForm.ldl),parseFloat(dashForm.trigliceridos));},[dashForm.colesterol_total,dashForm.hdl,dashForm.ldl,dashForm.trigliceridos]);
+  // Dictado global
+  function startDict(){
+    if(!hasSpeech){alert("Usa Chrome o Edge para dictado por voz.");return;}
+    if(dictRef.current){try{dictRef.current.stop();}catch(e){}}
+    var rec=new SR();
+    rec.lang="es-PE";rec.continuous=true;rec.interimResults=false;
+    rec.onresult=function(e){var t=Array.from(e.results).map(function(r){return r[0].transcript;}).join(" ");setDictTxt(function(prev){return prev+(prev?" ":"")+t;});};
+    rec.onerror=function(){setDictActive(false);};
+    rec.onend=function(){setDictActive(false);};
+    dictRef.current=rec;rec.start();setDictActive(true);
+  }
+  function stopDict(){if(dictRef.current){try{dictRef.current.stop();}catch(e){}}dictRef.current=null;setDictActive(false);}
 
-  const selDashPac=useCallback(async function(p){
-    setDashPac(p);
-    var rows=await dbGetMetabolicoByDni(p.paciente?p.paciente.dni:p.dni);
-    setDashConsultas(rows);
-    setDashForm(Object.assign({},emptyMetForm(),{paciente_dni:p.paciente?p.paciente.dni:p.dni,paciente_nombre:p.paciente?p.paciente.nombre:p.nombre}));
-    setDashVista("dashboard");
-  },[]);
-
-  const guardarMetabolico=useCallback(async function(){
-    var sem=calcSemaforo(dashForm);
-    var ok=await dbUpsertMetabolico(Object.assign({},dashForm,{semaforo:sem,paciente_dni:dashPac.paciente?dashPac.paciente.dni:dashPac.dni,paciente_nombre:dashPac.paciente?dashPac.paciente.nombre:dashPac.nombre,paciente_empresa:dashPac.paciente?dashPac.paciente.empresa:dashPac.empresa||""}));
-    if(ok){var rows=await dbGetMetabolicoByDni(dashPac.paciente?dashPac.paciente.dni:dashPac.dni);setDashConsultas(rows);setDashForm(emptyMetForm());setDashVista("dashboard");toast("✅ Guardado");}
-    else toast("❌ Error al guardar");
-  },[dashForm,dashPac,toast]);
-
-  const eliminarMetabolico=useCallback(async function(id){
-    await dbDeleteMetabolico(id);
-    var rows=await dbGetMetabolicoByDni(dashPac.paciente?dashPac.paciente.dni:dashPac.dni);
-    setDashConsultas(rows);toast("🗑 Eliminado");
-  },[dashPac,toast]);
-
-  const analizarIA=useCallback(async function(){
-    if(!dashConsultas.length){toast("Sin consultas");return;}
-    setLoadingIA(true);
-    var resumen=dashConsultas.map(function(c){return "Fecha:"+c.fecha+" IMC:"+c.imc+" CT:"+c.colesterol_total+" HDL:"+c.hdl+" LDL:"+c.ldl+" TG:"+c.trigliceridos+" Gluc:"+c.glucosa_ayunas+" HbA1c:"+c.hba1c+" PA:"+c.pa_sistolica+"/"+c.pa_diastolica+" AU:"+c.acido_urico+" Cr:"+c.creatinina;}).join("\n");
-    var nombre=dashPac.paciente?dashPac.paciente.nombre:dashPac.nombre;
-    var t=await callClaude("Médico ocupacional peruano. Analiza evolución metabólica: "+nombre+".\nHistorial:\n"+resumen+"\nIncluye: 1.Tendencia parámetros 2.Riesgo CV Framingham 3.Síndrome metabólico IDF 4.Índice aterogénico 5.Recomendaciones farmacológicas/no farmacológicas 6.Metas próxima consulta.");
-    if(ultimaC){await dbUpsertMetabolico(Object.assign({},ultimaC,{analisis_ia:t}));var rows=await dbGetMetabolicoByDni(dashPac.paciente?dashPac.paciente.dni:dashPac.dni);setDashConsultas(rows);}
-    setLoadingIA(false);toast("✅ Análisis IA completado");
-  },[dashConsultas,dashPac,ultimaC,toast]);
-
-  const calcIMC=useCallback(function(){var p=parseFloat(dashForm.peso),t=parseFloat(dashForm.talla);if(p&&t)setDashForm(function(f){return Object.assign({},f,{imc:(p/(t*t)).toFixed(1)});});},[dashForm.peso,dashForm.talla]);
-
-  const genAnamnesis=useCallback(async function(){setL("an",true);var t=await callClaude("Médico ocupacional peruano. Redacta anamnesis narrativa. Motivo:\""+hc.anamnesis.motivo+"\". Evolución:\""+hc.anamnesis.tEvol+"\". Síntomas:\""+hc.anamnesis.sintomas+"\". Paciente:"+hc.paciente.nombre+","+hc.paciente.edad+"a,"+hc.paciente.cargo+" en "+hc.paciente.empresa+".");upd("anamnesis","aiText",t);setL("an",false);},[hc,setL,upd]);
-  const genAntOcup=useCallback(async function(){setL("ao",true);var t=await callClaude("Redacta antecedentes ocupacionales. Exposiciones:\""+hc.antOcup.exposiciones+"\". Tiempo:\""+hc.antOcup.tiempo+"\". EPPs:\""+hc.antOcup.epps+"\". Cargo:"+hc.paciente.cargo+",empresa:"+hc.paciente.empresa+".");upd("antOcup","aiText",t);setL("ao",false);},[hc,setL,upd]);
-  const genExFisico=useCallback(async function(){setL("ef",true);var t=await callClaude("Interpreta examen físico. PA:"+hc.exFisico.pa+",FC:"+hc.exFisico.fc+",FR:"+hc.exFisico.fr+",T:"+hc.exFisico.temp+",Peso:"+hc.exFisico.peso+"kg,Talla:"+hc.exFisico.talla+"m,IMC:"+imcVal()+". Hallazgos:\""+hc.exFisico.hallazgos+"\".");upd("exFisico","aiText",t);setL("ef",false);},[hc,imcVal,setL,upd]);
-  const genDx=useCallback(async function(){setL("dx",true);var t=await callClaude("Sugiere diagnósticos CIE-10. Motivo:\""+hc.anamnesis.motivo+"\",hallazgos:\""+hc.exFisico.hallazgos+"\",lab:\""+hc.laboratorio.resumen+"\". "+hc.paciente.edad+"a,"+hc.paciente.cargo+". CIE:"+hc.diagnostico.cie10+".");upd("diagnostico","aiText",t);setL("dx",false);},[hc,setL,upd]);
-  const genPlan=useCallback(async function(){setL("pl",true);var t=await callClaude("Plan de manejo. Dx:\""+hc.diagnostico.cie10+"\","+hc.paciente.edad+"a. Farmacológico MINSA/OPS, seguimiento.",true);upd("plan","aiText",t);setL("pl",false);},[hc,setL,upd]);
-  const genAptitud=useCallback(async function(){setL("apt",true);var t=await callClaude("Conclusión aptitud médico-ocupacional. Resultado:\""+hc.aptitud.resultado+"\". Restricciones:\""+hc.aptitud.restricciones+"\". Dx:\""+hc.diagnostico.cie10+"\". Cargo:"+hc.paciente.cargo+". Ley 29783.");upd("aptitud","aiText",t);setL("apt",false);},[hc,setL,upd]);
-
-  const handleLabPDF=useCallback(async function(e){
-    var file=e.target.files[0];if(!file)return;setL("lab",true);
-    try{var b64=await readB64(file);var t=await callClaudePDF(b64,"Analiza laboratorio. Extrae valores, indica alterados, interpretación clínica medicina ocupacional.");setHC(function(h){return Object.assign({},h,{laboratorio:{aiText:t,resumen:t}});});}
-    catch(err){setHC(function(h){return Object.assign({},h,{laboratorio:Object.assign({},h.laboratorio,{aiText:"Error al procesar PDF."})});});}
-    setL("lab",false);
-  },[setL]);
-
-  const addIC=useCallback(function(){setHC(function(h){return Object.assign({},h,{interconsultas:[...h.interconsultas,{id:Date.now().toString(),especialidad:"Cardiología",motivo:"",urgencia:"Electiva",estado:"Pendiente",aiText:""}]});});},[]);
-  const updIC=useCallback(function(id,k,v){setHC(function(h){return Object.assign({},h,{interconsultas:h.interconsultas.map(function(ic){return ic.id===id?Object.assign({},ic,{[k]:v}):ic;})});});},[]);
-  const delIC=useCallback(function(id){setHC(function(h){return Object.assign({},h,{interconsultas:h.interconsultas.filter(function(ic){return ic.id!==id;})});});},[]);
-  const genIC=useCallback(async function(id){
-    var ic=hc.interconsultas.find(function(i){return i.id===id;});
-    setL("ic_"+id,true);
-    var t=await callClaude("Redacta interconsulta a "+ic.especialidad+". Paciente:"+hc.paciente.nombre+","+hc.paciente.edad+"a. Dx:"+hc.diagnostico.cie10+". Motivo:\""+ic.motivo+"\". Urgencia:"+ic.urgencia+".");
-    updIC(id,"aiText",t);setL("ic_"+id,false);
-  },[hc,setL,updIC]);
-
-  const guardarHC=useCallback(async function(){
-    var ok=await dbUpsertHC(Object.assign({},hc,{estado:"guardada"}));
-    if(ok){await cargarHistorial();toast("✅ HC guardada");setVista("historial");}
-    else toast("❌ Error al guardar");
-  },[hc,cargarHistorial,toast]);
-
-  const eliminarHC=useCallback(async function(id){
-    if(await dbDeleteHC(id)){setHistorial(function(h){return h.filter(function(x){return x.id!==id;});});toast("🗑 Eliminado");}
-    else toast("❌ Error");
-  },[toast]);
-
-  const nuevaHC=useCallback(function(){setHC(emptyHC());setVista("editor");},[]);
-  const abrirHC=useCallback(function(h){setHC(h);setVista("editor");},[]);
-
-  const importarEnfermeria=useCallback(async function(){
+  async function procesarDict(){
+    if(!dictTxt.trim())return;
+    setDictProc(true);
+    var prompt="Eres asistente médico. El médico dictó: \""+dictTxt+"\"\n\nExtrae y devuelve SOLO JSON (sin markdown) con estos campos (deja vacío si no se menciona):\n{\"motivo\":\"\",\"tEvol\":\"\",\"sintomas\":\"\",\"hallazgos\":\"\",\"pa\":\"\",\"fc\":\"\",\"fr\":\"\",\"temp\":\"\",\"peso\":\"\",\"talla\":\"\",\"exposiciones\":\"\",\"cie10\":\"\",\"plan\":\"\",\"aptitud\":\"\",\"anamnesis_narrativa\":\"\"}";
     try{
-      var rows=await supaGetPendientes();if(!rows.length){toast("Sin pendientes");return;}
-      var ids=historial.map(function(h){return h.id;});
+      var t=await ai(prompt);
+      var clean=t.replace(/```json/g,"").replace(/```/g,"").trim();
+      var data=JSON.parse(clean);
+      setHC(function(h){
+        var u=Object.assign({},h);
+        if(data.motivo)u.anamnesis=Object.assign({},u.anamnesis,{motivo:data.motivo});
+        if(data.tEvol)u.anamnesis=Object.assign({},u.anamnesis,{tEvol:data.tEvol});
+        if(data.sintomas)u.anamnesis=Object.assign({},u.anamnesis,{sintomas:data.sintomas});
+        if(data.anamnesis_narrativa)u.anamnesis=Object.assign({},u.anamnesis,{aiText:data.anamnesis_narrativa});
+        if(data.hallazgos)u.exFisico=Object.assign({},u.exFisico,{hallazgos:data.hallazgos});
+        if(data.pa)u.exFisico=Object.assign({},u.exFisico,{pa:data.pa});
+        if(data.fc)u.exFisico=Object.assign({},u.exFisico,{fc:data.fc});
+        if(data.fr)u.exFisico=Object.assign({},u.exFisico,{fr:data.fr});
+        if(data.temp)u.exFisico=Object.assign({},u.exFisico,{temp:data.temp});
+        if(data.peso)u.exFisico=Object.assign({},u.exFisico,{peso:data.peso});
+        if(data.talla)u.exFisico=Object.assign({},u.exFisico,{talla:data.talla});
+        if(data.exposiciones)u.antOcup=Object.assign({},u.antOcup,{exposiciones:data.exposiciones});
+        if(data.cie10)u.diagnostico=Object.assign({},u.diagnostico,{cie10:data.cie10});
+        if(data.plan)u.plan=Object.assign({},u.plan,{aiText:data.plan});
+        if(data.aptitud)u.aptitud=Object.assign({},u.aptitud,{resultado:data.aptitud});
+        return u;
+      });
+      toast("✅ Dictado distribuido en los campos");
+    }catch(e){toast("⚠ No se pudo parsear — revisa el texto");}
+    setDictProc(false);
+  }
+
+  // HC helpers
+  async function genAN(){setL("an",true);var t=await ai("Médico ocupacional peruano. Redacta anamnesis narrativa. Motivo:\""+hc.anamnesis.motivo+"\". Evolución:\""+hc.anamnesis.tEvol+"\". Síntomas:\""+hc.anamnesis.sintomas+"\". Paciente:"+hc.paciente.nombre+","+hc.paciente.edad+"a,"+hc.paciente.cargo+" en "+hc.paciente.empresa+".");upd("anamnesis","aiText",t);setL("an",false);}
+  async function genAO(){setL("ao",true);var t=await ai("Redacta antecedentes ocupacionales. Exposiciones:\""+hc.antOcup.exposiciones+"\". Tiempo:\""+hc.antOcup.tiempo+"\". EPPs:\""+hc.antOcup.epps+"\". Cargo:"+hc.paciente.cargo+",empresa:"+hc.paciente.empresa+".");upd("antOcup","aiText",t);setL("ao",false);}
+  async function genEF(){setL("ef",true);var t=await ai("Interpreta examen físico. PA:"+hc.exFisico.pa+",FC:"+hc.exFisico.fc+",FR:"+hc.exFisico.fr+",T:"+hc.exFisico.temp+",Peso:"+hc.exFisico.peso+"kg,Talla:"+hc.exFisico.talla+"m,IMC:"+imc()+". Hallazgos:\""+hc.exFisico.hallazgos+"\".");upd("exFisico","aiText",t);setL("ef",false);}
+  async function genDX(){setL("dx",true);var t=await ai("Sugiere diagnósticos CIE-10. Motivo:\""+hc.anamnesis.motivo+"\",hallazgos:\""+hc.exFisico.hallazgos+"\",lab:\""+hc.laboratorio.resumen+"\". "+hc.paciente.edad+"a,"+hc.paciente.cargo+". CIE:"+hc.diagnostico.cie10+".");upd("diagnostico","aiText",t);setL("dx",false);}
+  async function genPL(){setL("pl",true);var t=await ai("Plan de manejo. Dx:\""+hc.diagnostico.cie10+"\","+hc.paciente.edad+"a. Farmacológico MINSA/OPS, seguimiento.",true);upd("plan","aiText",t);setL("pl",false);}
+  async function genAPT(){setL("apt",true);var t=await ai("Conclusión aptitud médico-ocupacional. Resultado:\""+hc.aptitud.resultado+"\". Restricciones:\""+hc.aptitud.restricciones+"\". Dx:\""+hc.diagnostico.cie10+"\". Cargo:"+hc.paciente.cargo+". Ley 29783.");upd("aptitud","aiText",t);setL("apt",false);}
+  async function handleLab(e){var file=e.target.files[0];if(!file)return;setL("lab",true);try{var b64=await readB64(file);var t=await aiPDF(b64,"Analiza laboratorio. Extrae valores, indica alterados, interpretación clínica medicina ocupacional.");setHC(function(h){return Object.assign({},h,{laboratorio:{aiText:t,resumen:t}});});}catch(err){setHC(function(h){return Object.assign({},h,{laboratorio:Object.assign({},h.laboratorio,{aiText:"Error al procesar PDF."})});});}setL("lab",false);}
+  function addIC(){setHC(function(h){return Object.assign({},h,{interconsultas:h.interconsultas.concat([{id:Date.now().toString(),especialidad:"Cardiología",motivo:"",urgencia:"Electiva",estado:"Pendiente",aiText:""}])});});}
+  function updIC(id,k,v){setHC(function(h){return Object.assign({},h,{interconsultas:h.interconsultas.map(function(ic){return ic.id===id?Object.assign({},ic,{[k]:v}):ic;})});});}
+  function delIC(id){setHC(function(h){return Object.assign({},h,{interconsultas:h.interconsultas.filter(function(ic){return ic.id!==id;})});});}
+  async function genIC(id){var ic=hc.interconsultas.find(function(i){return i.id===id;});setL("ic_"+id,true);var t=await ai("Redacta interconsulta a "+ic.especialidad+". Paciente:"+hc.paciente.nombre+","+hc.paciente.edad+"a. Dx:"+hc.diagnostico.cie10+". Motivo:\""+ic.motivo+"\". Urgencia:"+ic.urgencia+".");updIC(id,"aiText",t);setL("ic_"+id,false);}
+
+  async function guardar(){
+    // Validaciones clínicas
+    var warns=[];
+    if(!hc.paciente.nombre.trim())warns.push("• Nombre del paciente vacío");
+    if(!hc.paciente.dni.trim())warns.push("• DNI vacío");
+    if(!hc.diagnostico.cie10.trim())warns.push("• Diagnóstico CIE-10 no ingresado");
+    if(hc.exFisico.pa){var sys=parseInt(hc.exFisico.pa.split("/")[0]);if(sys>180)warns.push("• PA sistólica crítica (>180 mmHg) — verificar");}
+    if(hc.exFisico.fc){var fc=parseFloat(hc.exFisico.fc);if(fc>130||fc<45)warns.push("• FC fuera de rango seguro ("+fc+" lpm)");}
+    if(hc.exFisico.temp){var tmp=parseFloat(hc.exFisico.temp);if(tmp>39.5||tmp<35)warns.push("• Temperatura crítica ("+tmp+" °C)");}
+    if(warns.length>0&&!window.confirm("⚠ Advertencias:\n\n"+warns.join("\n")+"\n\n¿Guardar de todas formas?")){return;}
+    var ok=await dbSave(Object.assign({},hc,{estado:"guardada"}));
+    if(ok){await reload();toast("✅ HC guardada");setVista("historial");}else toast("❌ Error al guardar");
+  }
+  async function eliminar(id){if(await dbDel(id)){setHist(function(h){return h.filter(function(x){return x.id!==id;});});toast("🗑 Eliminado");}else toast("❌ Error");}
+  function nuevaHC(){setHC(eHC());setVista("editor");}
+  async function nuevaHCdesdePaciente(dni){
+    // Busca HC anterior del mismo DNI para pre-llenar datos
+    var previas=hist.filter(function(h){return h.paciente.dni===dni&&h.paciente.dni;});
+    if(!previas.length){nuevaHC();return;}
+    // Ordenar por fecha desc, tomar la más reciente
+    previas.sort(function(a,b){return b.fecha.localeCompare(a.fecha);});
+    var base=previas[0];
+    var nueva=eHC();
+    // Copiar datos del paciente y antecedentes ocupacionales, limpiar sección clínica
+    nueva.paciente=Object.assign({},base.paciente);
+    nueva.antOcup=Object.assign({},base.antOcup,{aiText:""});
+    nueva.id=Date.now().toString();
+    nueva.fecha=new Date().toISOString().split("T")[0];
+    nueva.estado="borrador";
+    nueva.fromEnf=false;
+    setHC(nueva);setVista("editor");
+    toast("📋 Datos del paciente copiados de HC anterior ("+base.fecha+")");
+  }
+  function abrirHC(h){setHC(h);setVista("editor");}
+
+  async function importarEnf(){
+    try{
+      var rows=await enfGetPend();if(!rows.length){toast("Sin pendientes");return;}
+      var ids=hist.map(function(h){return h.id;});
       var nuevas=rows.filter(function(r){return!ids.includes(r.id);}).map(function(row){
-        return Object.assign({},emptyHC(),{id:row.id,fecha:row.fecha,
+        return Object.assign({},eHC(),{id:row.id,fecha:row.fecha,
           paciente:{nombre:row.nombre||"",dni:row.dni||"",edad:row.edad||"",sexo:"M",empresa:row.empresa||"",cargo:row.cargo||""},
           anamnesis:{motivo:row.motivo||"",tEvol:row.t_evol||"",sintomas:row.sintomas||"",aiText:""},
           antOcup:{exposiciones:row.exposiciones||"",tiempo:row.tiempo||"",epps:row.epps||"",aiText:""},
           exFisico:{pa:row.pa||"",fc:row.fc||"",fr:row.fr||"",temp:row.temp||"",peso:row.peso||"",talla:row.talla||"",hallazgos:"",aiText:""},
           laboratorio:{aiText:row.lab_resumen||"",resumen:row.lab_resumen||""},
-          fromEnfermeria:true,estado:"pendiente-médico"});
+          fromEnf:true,estado:"pendiente-médico"});
       });
       if(!nuevas.length){toast("Todos ya importados");return;}
-      for(var i=0;i<nuevas.length;i++)await dbUpsertHC(nuevas[i]);
-      for(var j=0;j<rows.length;j++)await supaMarkAtendido(rows[j].id);
-      await cargarHistorial();setPendientesEnf(0);toast("✅ "+nuevas.length+" importado(s)");
+      for(var i=0;i<nuevas.length;i++)await dbSave(nuevas[i]);
+      for(var j=0;j<rows.length;j++)await enfMark(rows[j].id);
+      await reload();setPendEnf(0);toast("✅ "+nuevas.length+" importado(s)");
     }catch(e){toast("Error: "+e.message);}
-  },[historial,cargarHistorial,toast]);
+  }
 
-  // Export HC — sin template literals anidados
-  const exportarHC=useCallback(function(){
+  // Dashboard metabólico
+  async function selPac(p){setDashPac(p);var rows=await metGet(p.paciente?p.paciente.dni:p.dni);setDashC(rows);setDashF(Object.assign({},eMF(),{paciente_dni:p.paciente?p.paciente.dni:p.dni,paciente_nombre:p.paciente?p.paciente.nombre:p.nombre}));setDashV("dashboard");}
+  async function saveMet(){var sem=calcSem(dashF);var ok=await metSave(Object.assign({},dashF,{semaforo:sem,paciente_dni:dashPac.paciente?dashPac.paciente.dni:dashPac.dni,paciente_nombre:dashPac.paciente?dashPac.paciente.nombre:dashPac.nombre,paciente_empresa:dashPac.paciente?dashPac.paciente.empresa:dashPac.empresa||""}));if(ok){var rows=await metGet(dashPac.paciente?dashPac.paciente.dni:dashPac.dni);setDashC(rows);setDashF(eMF());setDashV("dashboard");toast("✅ Guardado");}else toast("❌ Error");}
+  async function delMet(id){await metDel(id);var rows=await metGet(dashPac.paciente?dashPac.paciente.dni:dashPac.dni);setDashC(rows);toast("🗑 Eliminado");}
+  async function analIA(){if(!dashC.length){toast("Sin consultas");return;}setLdgIA(true);var resumen=dashC.map(function(c){return "Fecha:"+c.fecha+" IMC:"+c.imc+" CT:"+c.colesterol_total+" HDL:"+c.hdl+" LDL:"+c.ldl+" TG:"+c.trigliceridos+" Gluc:"+c.glucosa_ayunas+" HbA1c:"+c.hba1c+" PA:"+c.pa_sistolica+"/"+c.pa_diastolica+" AU:"+c.acido_urico+" Cr:"+c.creatinina;}).join("\n");var nombre=dashPac.paciente?dashPac.paciente.nombre:dashPac.nombre;var t=await ai("Médico ocupacional peruano. Analiza evolución metabólica: "+nombre+".\nHistorial:\n"+resumen+"\nIncluye: 1.Tendencia parámetros 2.Riesgo CV Framingham 3.Síndrome metabólico IDF 4.Índice aterogénico 5.Recomendaciones farmacológicas/no farmacológicas 6.Metas próxima consulta.");if(ultiC){await metSave(Object.assign({},ultiC,{analisis_ia:t}));var rows=await metGet(dashPac.paciente?dashPac.paciente.dni:dashPac.dni);setDashC(rows);}setLdgIA(false);toast("✅ Análisis completado");}
+  function calcIMC(){var p=parseFloat(dashF.peso),t=parseFloat(dashF.talla);if(p&&t)setDashF(function(f){return Object.assign({},f,{imc:(p/(t*t)).toFixed(1)});});}
+
+  // Export HC
+  function exportar(){
     var p=hc.paciente;
-    var aptColor=hc.aptitud.resultado==="Apto"?"#48BB78":hc.aptitud.resultado.includes("restricciones")?"#F6AD55":"#FC8181";
-    var ics=hc.interconsultas.map(function(ic){
-      return '<div style="border:1px solid #E9D8FD;border-radius:8px;padding:10px;margin-bottom:8px;background:#FAF5FF"><strong style="color:#9F7AEA">'+ic.especialidad+'</strong> · '+ic.urgencia+' · '+ic.estado+'<br/>'+(ic.aiText||ic.motivo||"")+'</div>';
-    }).join("");
-    var html='<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>HC '+p.nombre+' '+hc.fecha+'</title>'
-      +'<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Segoe UI,Georgia,serif;background:#F5F9FF;color:#2D3748;font-size:13px;line-height:1.7}.pagina{max-width:820px;margin:32px auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(74,144,217,.12)}.header{background:linear-gradient(135deg,#4A90D9,#38B2AC);color:#fff;padding:24px 32px;display:flex;align-items:center;gap:18px}.logo{width:56px;height:56px;border-radius:50%;background:rgba(255,255,255,.25);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:22px}.pbar{background:#EAF6FB;padding:14px 32px;display:flex;gap:24px;flex-wrap:wrap;border-bottom:1px solid #E2E8F0}.dato{display:flex;flex-direction:column}.dlbl{font-size:9px;font-weight:700;text-transform:uppercase;color:#718096}.dval{font-size:13px;font-weight:700}.body{padding:24px 32px}.sec{margin-bottom:20px;border-radius:10px;overflow:hidden;border:1px solid #E2E8F0}.stit{background:#F7FAFC;padding:8px 14px;font-size:11px;font-weight:800;text-transform:uppercase;color:#4A90D9;border-bottom:1px solid #E2E8F0}.sbody{padding:12px 14px}.ai{background:#F0FFF4;border-left:4px solid #48BB78;border-radius:0 8px 8px 0;padding:10px 14px;font-size:12px;white-space:pre-wrap;margin-top:8px}.apt{display:inline-block;padding:4px 16px;border-radius:20px;font-weight:800;font-size:13px;color:#fff;background:'+aptColor+'}.footer{background:#F7FAFC;padding:12px 32px;text-align:center;font-size:10px;color:#718096;border-top:1px solid #E2E8F0}.firma{margin-top:36px;padding-top:20px;border-top:2px solid #E2E8F0;display:flex;justify-content:flex-end}.firma-c{text-align:center}@media print{body{background:#fff}.pagina{box-shadow:none;margin:0;border-radius:0}}</style></head><body>'
-      +'<div class="pagina"><div class="header"><div class="logo">P</div><div><div style="font-size:22px;font-weight:900">PANACEA MEDWEB</div><div style="font-size:11px;opacity:.9">Historia Clínica Ocupacional</div></div><div style="margin-left:auto;text-align:right;font-size:12px;opacity:.85"><div style="font-weight:700">'+hc.fecha+'</div><div style="margin-top:4px;background:rgba(255,255,255,.2);border-radius:6px;padding:2px 10px;font-size:10px;font-weight:700">'+(hc.estado||"").toUpperCase()+'</div></div></div>'
-      +'<div class="pbar"><div class="dato"><span class="dlbl">Nombre</span><span class="dval">'+(p.nombre||"—")+'</span></div><div class="dato"><span class="dlbl">DNI</span><span class="dval">'+(p.dni||"—")+'</span></div><div class="dato"><span class="dlbl">Edad</span><span class="dval">'+(p.edad||"—")+' años</span></div><div class="dato"><span class="dlbl">Empresa</span><span class="dval">'+(p.empresa||"—")+'</span></div><div class="dato"><span class="dlbl">Cargo</span><span class="dval">'+(p.cargo||"—")+'</span></div></div>'
-      +'<div class="body">'
-      +'<div class="sec"><div class="stit">📋 Anamnesis</div><div class="sbody">'+(hc.anamnesis.aiText?'<div class="ai">'+hc.anamnesis.aiText+'</div>':'<p>'+(hc.anamnesis.motivo||"—")+'</p>')+'</div></div>'
-      +'<div class="sec"><div class="stit">🏭 Antecedentes Ocupacionales</div><div class="sbody">'+(hc.antOcup.aiText?'<div class="ai">'+hc.antOcup.aiText+'</div>':'<p>'+(hc.antOcup.exposiciones||"—")+'</p>')+'</div></div>'
-      +'<div class="sec"><div class="stit">🩺 Examen Físico</div><div class="sbody"><p>PA:'+(hc.exFisico.pa||"—")+' | FC:'+(hc.exFisico.fc||"—")+' | FR:'+(hc.exFisico.fr||"—")+' | T°:'+(hc.exFisico.temp||"—")+' | Peso:'+(hc.exFisico.peso||"—")+'kg | Talla:'+(hc.exFisico.talla||"—")+'m | IMC:'+imcVal()+'</p>'+(hc.exFisico.aiText?'<div class="ai">'+hc.exFisico.aiText+'</div>':'')+'</div></div>'
-      +(hc.laboratorio.aiText?'<div class="sec"><div class="stit">🔬 Laboratorio</div><div class="sbody"><div class="ai">'+hc.laboratorio.aiText+'</div></div></div>':"")
-      +'<div class="sec"><div class="stit">🏷 Diagnóstico CIE-10</div><div class="sbody"><p><strong>'+(hc.diagnostico.cie10||"—")+'</strong></p>'+(hc.diagnostico.aiText?'<div class="ai">'+hc.diagnostico.aiText+'</div>':'')+'</div></div>'
-      +'<div class="sec"><div class="stit">💊 Plan / Indicaciones</div><div class="sbody">'+(hc.plan.aiText?'<div class="ai">'+hc.plan.aiText+'</div>':'<p>'+(hc.plan.indicaciones||"—")+'</p>')+'</div></div>'
-      +'<div class="sec"><div class="stit">✅ Aptitud Médico-Ocupacional</div><div class="sbody"><div class="apt">'+hc.aptitud.resultado.toUpperCase()+'</div>'+(hc.aptitud.restricciones?'<p style="font-size:12px;color:#718096">Restricciones: '+hc.aptitud.restricciones+'</p>':'')+(hc.aptitud.aiText?'<div class="ai">'+hc.aptitud.aiText+'</div>':'')+'</div></div>'
-      +(hc.interconsultas.length?'<div class="sec"><div class="stit">🔀 Interconsultas</div><div class="sbody">'+ics+'</div></div>':"")
-      +'<div class="firma"><div class="firma-c"><div style="width:220px;border-bottom:1.5px solid #2D3748;margin:0 auto 6px;height:40px"></div><div style="font-weight:800;font-size:14px">Dr. Miguel Wenceslao Ochoa Cuadros</div><div style="font-size:11px;color:#718096">Médico Ocupacional · CMP 102517 · RNE/RNA 13334</div></div></div>'
-      +'</div>'
-      +'<div class="footer"><strong style="color:#4A90D9">PANACEA MEDICINA OCUPACIONAL</strong> · panaceamedocup@gmail.com · Arequipa, Perú</div>'
+    var ac=hc.aptitud.resultado==="Apto"?"#48BB78":hc.aptitud.resultado.includes("restricciones")?"#F6AD55":"#FC8181";
+    var ics=hc.interconsultas.map(function(ic){return '<div style="border:1px solid #E9D8FD;border-radius:8px;padding:10px;margin-bottom:8px"><strong style="color:#9F7AEA">'+ic.especialidad+'</strong> - '+ic.urgencia+' - '+ic.estado+'<br/>'+(ic.aiText||ic.motivo||"")+'</div>';}).join("");
+    var html='<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>HC '+p.nombre+'</title>'
+      +'<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Segoe UI,serif;background:#F5F9FF;color:#2D3748;font-size:13px;line-height:1.7}'
+      +'.pag{max-width:820px;margin:32px auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(74,144,217,.12)}'
+      +'.hdr{background:linear-gradient(135deg,#4A90D9,#38B2AC);color:#fff;padding:24px 32px;display:flex;align-items:center;gap:18px}'
+      +'.pb{background:#EAF6FB;padding:14px 32px;display:flex;gap:24px;flex-wrap:wrap;border-bottom:1px solid #E2E8F0}'
+      +'.dato{display:flex;flex-direction:column}.dl{font-size:9px;font-weight:700;text-transform:uppercase;color:#718096}.dv{font-size:13px;font-weight:700}'
+      +'.bd{padding:24px 32px}.sec{margin-bottom:20px;border-radius:10px;overflow:hidden;border:1px solid #E2E8F0}'
+      +'.st{background:#F7FAFC;padding:8px 14px;font-size:11px;font-weight:800;text-transform:uppercase;color:#4A90D9;border-bottom:1px solid #E2E8F0}'
+      +'.sb{padding:12px 14px}.ai{background:#F0FFF4;border-left:4px solid #48BB78;padding:10px 14px;font-size:12px;white-space:pre-wrap;margin-top:8px}'
+      +'.apt{display:inline-block;padding:4px 16px;border-radius:20px;font-weight:800;font-size:13px;color:#fff;background:'+ac+'}'
+      +'.ftr{background:#F7FAFC;padding:12px 32px;text-align:center;font-size:10px;color:#718096;border-top:1px solid #E2E8F0}'
+      +'.firma{margin-top:36px;padding-top:20px;border-top:2px solid #E2E8F0;display:flex;justify-content:flex-end}'
+      +'@media print{body{background:#fff}.pag{box-shadow:none;margin:0;border-radius:0}}</style></head><body>'
+      +'<div class="pag"><div class="hdr"><div style="width:56px;height:56px;border-radius:50%;background:rgba(255,255,255,.25);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:22px">P</div>'
+      +'<div><div style="font-size:22px;font-weight:900">PANACEA MEDWEB</div><div style="font-size:11px;opacity:.9">Historia Clínica Ocupacional</div></div>'
+      +'<div style="margin-left:auto;text-align:right;font-size:12px;opacity:.85"><div style="font-weight:700">'+hc.fecha+'</div><div style="margin-top:4px;background:rgba(255,255,255,.2);border-radius:6px;padding:2px 10px;font-size:10px;font-weight:700">'+(hc.estado||"").toUpperCase()+'</div></div></div>'
+      +'<div class="pb"><div class="dato"><span class="dl">Nombre</span><span class="dv">'+(p.nombre||"—")+'</span></div>'
+      +'<div class="dato"><span class="dl">DNI</span><span class="dv">'+(p.dni||"—")+'</span></div>'
+      +'<div class="dato"><span class="dl">Edad</span><span class="dv">'+(p.edad||"—")+' años</span></div>'
+      +'<div class="dato"><span class="dl">Empresa</span><span class="dv">'+(p.empresa||"—")+'</span></div>'
+      +'<div class="dato"><span class="dl">Cargo</span><span class="dv">'+(p.cargo||"—")+'</span></div></div>'
+      +'<div class="bd">'
+      +'<div class="sec"><div class="st">Anamnesis</div><div class="sb">'+(hc.anamnesis.aiText?'<div class="ai">'+hc.anamnesis.aiText+'</div>':'<p>'+(hc.anamnesis.motivo||"—")+'</p>')+'</div></div>'
+      +'<div class="sec"><div class="st">Antecedentes Ocupacionales</div><div class="sb">'+(hc.antOcup.aiText?'<div class="ai">'+hc.antOcup.aiText+'</div>':'<p>'+(hc.antOcup.exposiciones||"—")+'</p>')+'</div></div>'
+      +'<div class="sec"><div class="st">Examen Físico</div><div class="sb"><p>PA:'+(hc.exFisico.pa||"—")+' FC:'+(hc.exFisico.fc||"—")+' FR:'+(hc.exFisico.fr||"—")+' T°:'+(hc.exFisico.temp||"—")+' Peso:'+(hc.exFisico.peso||"—")+'kg Talla:'+(hc.exFisico.talla||"—")+'m IMC:'+imc()+'</p>'+(hc.exFisico.aiText?'<div class="ai">'+hc.exFisico.aiText+'</div>':'')+'</div></div>'
+      +(hc.laboratorio.aiText?'<div class="sec"><div class="st">Laboratorio</div><div class="sb"><div class="ai">'+hc.laboratorio.aiText+'</div></div></div>':"")
+      +'<div class="sec"><div class="st">Diagnóstico CIE-10</div><div class="sb"><p><strong>'+(hc.diagnostico.cie10||"—")+'</strong></p>'+(hc.diagnostico.aiText?'<div class="ai">'+hc.diagnostico.aiText+'</div>':'')+'</div></div>'
+      +'<div class="sec"><div class="st">Plan</div><div class="sb">'+(hc.plan.aiText?'<div class="ai">'+hc.plan.aiText+'</div>':'<p>'+(hc.plan.indicaciones||"—")+'</p>')+'</div></div>'
+      +'<div class="sec"><div class="st">Aptitud Médico-Ocupacional</div><div class="sb"><div class="apt">'+hc.aptitud.resultado.toUpperCase()+'</div>'+(hc.aptitud.restricciones?'<p style="font-size:12px;color:#718096;margin-top:6px">Restricciones: '+hc.aptitud.restricciones+'</p>':'')+(hc.aptitud.aiText?'<div class="ai">'+hc.aptitud.aiText+'</div>':'')+'</div></div>'
+      +(hc.interconsultas.length?'<div class="sec"><div class="st">Interconsultas</div><div class="sb">'+ics+'</div></div>':"")
+      +'<div class="firma"><div style="text-align:center"><div style="width:220px;border-bottom:1.5px solid #2D3748;margin:0 auto 6px;height:40px"></div>'
+      +'<div style="font-weight:800;font-size:14px">Dr. Miguel Wenceslao Ochoa Cuadros</div>'
+      +'<div style="font-size:11px;color:#718096">Médico Ocupacional - CMP 102517 - RNE/RNA 13334</div></div></div>'
+      +'</div><div class="ftr"><strong style="color:#4A90D9">PANACEA MEDICINA OCUPACIONAL</strong> - panaceamedocup@gmail.com - Arequipa, Perú</div>'
       +'</div></body></html>';
     var blob=new Blob([html],{type:"text/html;charset=utf-8"});
     var url=URL.createObjectURL(blob);
-    var a=document.createElement("a");a.href=url;a.download="HC_"+(p.nombre||"paciente")+"_"+hc.fecha+".html";a.click();
+    var a=document.createElement("a");a.href=url;a.download="HC_"+(p.nombre||"pac")+"_"+hc.fecha+".html";a.click();
+    setTimeout(function(){URL.revokeObjectURL(url);},1000);toast("⬇ HC exportada");
+  }
+
+  function bColor(e){return e==="guardada"?C.green:e==="pendiente-médico"?C.amber:C.gray;}
+
+  function exportarInformeEmpresa(empresa){
+    var pacs=hist.filter(function(h){return h.paciente.empresa===empresa;});
+    if(!pacs.length){toast("Sin pacientes para esta empresa");return;}
+    var aptos=pacs.filter(function(h){return h.aptitud&&h.aptitud.resultado==="Apto";}).length;
+    var restric=pacs.filter(function(h){return h.aptitud&&h.aptitud.resultado&&h.aptitud.resultado.includes("restricciones");}).length;
+    var noAptos=pacs.filter(function(h){return h.aptitud&&h.aptitud.resultado&&h.aptitud.resultado.includes("No apto");}).length;
+    var rows=pacs.map(function(h){
+      var aptRes=h.aptitud?h.aptitud.resultado:"—";
+      var aptBg=aptRes==="Apto"?"#48BB78":aptRes.includes("restricciones")?"#F6AD55":"#FC8181";
+      var aptSpan='<span style="background:'+aptBg+';color:#fff;border-radius:12px;padding:2px 10px;font-size:11px;font-weight:700">'+aptRes+'</span>';
+      var dx=h.diagnostico?h.diagnostico.cie10||"—":"—";
+      return '<tr><td>'+h.paciente.nombre+'</td><td>'+h.paciente.dni+'</td><td>'+h.paciente.cargo+'</td><td>'+h.fecha+'</td><td>'+aptSpan+'</td><td>'+dx+'</td></tr>';
+    }).join("");
+    var html='<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Informe '+empresa+'</title>'
+      +'<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Segoe UI,sans-serif;background:#F5F9FF;color:#2D3748;font-size:13px}'
+      +'.pag{max-width:900px;margin:32px auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 4px 20px rgba(74,144,217,.15)}'
+      +'.hdr{background:linear-gradient(135deg,#4A90D9,#38B2AC);color:#fff;padding:28px 36px}'
+      +'.stats{display:flex;gap:16px;padding:20px 36px;background:#F7FAFC;border-bottom:1px solid #E2E8F0}'
+      +'.stat{flex:1;text-align:center;background:#fff;border-radius:10px;padding:14px;border:1px solid #E2E8F0}'
+      +'.sv{font-size:28px;font-weight:900;line-height:1}.sl{font-size:11px;font-weight:700;text-transform:uppercase;margin-top:3px}'
+      +'table{width:100%;border-collapse:collapse;font-size:12px}th{background:#F7FAFC;padding:10px 14px;text-align:left;font-weight:700;color:#718096;border-bottom:1px solid #E2E8F0}'
+      +'td{padding:9px 14px;border-bottom:1px solid #E2E8F0}tr:hover{background:#F7FAFC}'
+      +'.ftr{padding:16px 36px;text-align:center;font-size:10px;color:#718096;border-top:1px solid #E2E8F0}'
+      +'@media print{body{background:#fff}.pag{box-shadow:none;margin:0;border-radius:0}}</style></head><body>'
+      +'<div class="pag">'
+      +'<div class="hdr"><div style="font-size:11px;opacity:.8;margin-bottom:4px">INFORME MÉDICO OCUPACIONAL</div>'
+      +'<div style="font-size:24px;font-weight:900">'+empresa+'</div>'
+      +'<div style="font-size:12px;opacity:.8;margin-top:6px">Dr. Miguel W. Ochoa Cuadros · CMP 102517 · Generado: '+new Date().toLocaleDateString("es-PE",{year:"numeric",month:"long",day:"numeric"})+'</div></div>'
+      +'<div class="stats">'
+      +'<div class="stat"><div class="sv" style="color:#4A90D9">'+pacs.length+'</div><div class="sl" style="color:#4A90D9">Total evaluados</div></div>'
+      +'<div class="stat"><div class="sv" style="color:#48BB78">'+aptos+'</div><div class="sl" style="color:#48BB78">Aptos</div></div>'
+      +'<div class="stat"><div class="sv" style="color:#F6AD55">'+restric+'</div><div class="sl" style="color:#F6AD55">Con restricciones</div></div>'
+      +'<div class="stat"><div class="sv" style="color:#FC8181">'+noAptos+'</div><div class="sl" style="color:#FC8181">No aptos</div></div>'
+      +'<div class="stat"><div class="sv" style="color:#38B2AC">'+((aptos/pacs.length)*100).toFixed(0)+'%</div><div class="sl" style="color:#38B2AC">Aptitud</div></div>'
+      +'</div>'
+      +'<div style="padding:20px 36px"><table><thead><tr><th>Nombre</th><th>DNI</th><th>Cargo</th><th>Fecha HC</th><th>Aptitud</th><th>Diagnóstico</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+      +'<div class="ftr"><strong style="color:#4A90D9">PANACEA MEDICINA OCUPACIONAL</strong> · panaceamedocup@gmail.com · Arequipa, Perú</div>'
+      +'</div></body></html>';
+    var blob=new Blob([html],{type:"text/html;charset=utf-8"});
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement("a");a.href=url;a.download="Informe_"+empresa.replace(/\s/g,"_")+"_"+new Date().toISOString().split("T")[0]+".html";a.click();
     setTimeout(function(){URL.revokeObjectURL(url);},1000);
-    toast("⬇ HC exportada");
-  },[hc,imcVal,toast]);
+    toast("⬇ Informe exportado: "+pacs.length+" pacientes");
+  }
 
-  var badgeColor=function(e){return e==="guardada"?C.green:e==="pendiente-médico"?C.amber:C.gray;};
-
-  return(
+  // ── RENDER ────────────────────────────────────────────────────
+  return (
     <div style={{minHeight:"100vh",background:C.bg,fontFamily:"'Segoe UI',system-ui,sans-serif",color:C.text}}>
       {notif&&<div style={{position:"fixed",top:16,right:16,background:C.teal,color:"#fff",padding:"10px 18px",borderRadius:10,fontWeight:700,fontSize:13,zIndex:999,boxShadow:"0 4px 16px rgba(0,0,0,.12)"}}>{notif}</div>}
 
@@ -528,9 +623,7 @@ function App(){
             <div style={{fontSize:21,fontWeight:900,letterSpacing:1}}>PANACEA MEDWEB</div>
             <div style={{fontSize:11,color:"rgba(255,255,255,.85)",display:"flex",alignItems:"center",gap:6}}>
               Historia Clínica con IA · Dr. Ochoa Cuadros CMP 102517
-              <span style={{background:dbOnline===null?"rgba(255,255,255,.3)":dbOnline?"#48BB78":"#FC8181",borderRadius:20,padding:"1px 8px",fontSize:10,fontWeight:700}}>
-                {dbOnline===null?"⏳":dbOnline?"☁ OK":"⚠ Sin conexión"}
-              </span>
+              <span style={{background:dbOk===null?"rgba(255,255,255,.3)":dbOk?"#48BB78":"#FC8181",borderRadius:20,padding:"1px 8px",fontSize:10,fontWeight:700}}>{dbOk===null?"⏳":dbOk?"☁ OK":"⚠ Sin conexión"}</span>
             </div>
           </div>
         </div>
@@ -539,13 +632,13 @@ function App(){
       {/* NAVBAR */}
       <div style={{background:C.white,borderBottom:"1px solid "+C.border,boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
         <div style={{maxWidth:980,margin:"0 auto",padding:"0 24px",display:"flex",alignItems:"center",gap:4}}>
-          {[{key:"historial",label:"📋 Historial"},{key:"editor",label:"✏ Editor HC"},{key:"dashboard",label:"📊 Dashboard Metabólico"},{key:"epidemio",label:"🏭 Epidemiología"}].map(function(n){
-            return <button key={n.key} onClick={function(){setVista(n.key);}} style={{padding:"11px 16px",fontSize:13,fontWeight:700,cursor:"pointer",border:"none",background:"transparent",color:vista===n.key?C.blue:C.gray,borderBottom:vista===n.key?"3px solid "+C.blue:"3px solid transparent"}}>{n.label}</button>;
+          {[{k:"historial",l:"📋 Historial"},{k:"editor",l:"✏ Editor HC"},{k:"dashboard",l:"📊 Dashboard Metabólico"},{k:"epidemio",l:"🏭 Epidemiología"}].map(function(n){
+            return <button key={n.k} onClick={function(){setVista(n.k);}} style={{padding:"11px 16px",fontSize:13,fontWeight:700,cursor:"pointer",border:"none",background:"transparent",color:vista===n.k?C.blue:C.gray,borderBottom:vista===n.k?"3px solid "+C.blue:"3px solid transparent"}}>{n.l}</button>;
           })}
           <div style={{marginLeft:"auto",display:"flex",gap:8,padding:"8px 0",alignItems:"center"}}>
             <Btn label="+ Nueva HC" onClick={nuevaHC} color={C.green} small/>
-            <button onClick={importarEnfermeria} style={{borderRadius:8,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:"pointer",border:"none",background:pendientesEnf>0?C.red:C.amber,color:pendientesEnf>0?"#fff":"#000",display:"inline-flex",alignItems:"center",gap:5}}>
-              ⬇ Importar Enfermería {pendientesEnf>0&&<span style={{background:"rgba(255,255,255,.3)",borderRadius:"50%",width:18,height:18,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:900}}>{pendientesEnf}</span>}
+            <button onClick={importarEnf} style={{borderRadius:8,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:"pointer",border:"none",background:pendEnf>0?C.red:C.amber,color:pendEnf>0?"#fff":"#000",display:"inline-flex",alignItems:"center",gap:5}}>
+              ⬇ Importar Enfermería {pendEnf>0&&<span style={{background:"rgba(255,255,255,.3)",borderRadius:"50%",width:18,height:18,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:900}}>{pendEnf}</span>}
             </button>
           </div>
         </div>
@@ -557,15 +650,23 @@ function App(){
         {vista==="historial"&&(
           <div>
             <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap",alignItems:"flex-end"}}>
-              <input style={{border:"1px solid "+C.border,borderRadius:8,padding:"8px 12px",fontSize:13,background:C.grayLight,outline:"none",color:C.text,flex:2,minWidth:200}} placeholder="🔍 Nombre o DNI..." value={busqPac} onChange={function(e){setBusqPac(e.target.value);}}/>
-              <input type="date" style={{border:"1px solid "+C.border,borderRadius:8,padding:"8px 12px",fontSize:13,background:C.grayLight,outline:"none",color:C.text,flex:1,minWidth:140}} value={busqFecha} onChange={function(e){setBusqFecha(e.target.value);}}/>
-              <select style={{border:"1px solid "+C.border,borderRadius:8,padding:"8px 12px",fontSize:13,background:C.grayLight,color:C.text,flex:1,minWidth:140}} value={busqEmpresa} onChange={function(e){setBusqEmpresa(e.target.value);}}>
+              <input style={{border:"1px solid "+C.border,borderRadius:8,padding:"8px 12px",fontSize:13,background:C.grayLight,outline:"none",color:C.text,flex:2,minWidth:200}} placeholder="🔍 Nombre o DNI..." value={bPac} onChange={function(e){setBPac(e.target.value);}}/>
+              <input type="date" style={{border:"1px solid "+C.border,borderRadius:8,padding:"8px 12px",fontSize:13,background:C.grayLight,outline:"none",color:C.text,flex:1,minWidth:140}} value={bFecha} onChange={function(e){setBFecha(e.target.value);}}/>
+              <select style={{border:"1px solid "+C.border,borderRadius:8,padding:"8px 12px",fontSize:13,background:C.grayLight,color:C.text,flex:1,minWidth:140}} value={bEmp} onChange={function(e){setBEmp(e.target.value);}}>
                 <option value="">Todas las empresas</option>{empresas.map(function(e){return <option key={e} value={e}>{e}</option>;})}
               </select>
-              {(busqPac||busqFecha||busqEmpresa)&&<Btn label="✕ Limpiar" onClick={function(){setBusqPac("");setBusqFecha("");setBusqEmpresa("");}} color={C.gray} small/>}
+              {/* Filtro aptitud */}
+              <select style={{border:"1px solid "+C.border,borderRadius:8,padding:"8px 12px",fontSize:13,background:C.grayLight,color:C.text,minWidth:160}} value={filtApt} onChange={function(e){setFiltApt(e.target.value);}}>
+                <option value="">Todas las aptitudes</option>
+                <option value="Apto">✅ Apto</option>
+                <option value="restricciones">⚠ Con restricciones</option>
+                <option value="No apto">❌ No apto</option>
+              </select>
+              {(bPac||bFecha||bEmp||filtApt)&&<Btn label="✕ Limpiar" onClick={function(){setBPac("");setBFecha("");setBEmp("");setFiltApt("");}} color={C.gray} small/>}
               <span style={{fontSize:12,color:C.textSoft,whiteSpace:"nowrap"}}>{filtrados.length} registro(s)</span>
+              {bEmp&&<Btn label="⬇ Informe empresa" onClick={function(){exportarInformeEmpresa(bEmp);}} color={C.teal} small/>}
             </div>
-            {loadingDB?<div style={{textAlign:"center",padding:"52px 0",color:C.textSoft}}>⏳ Cargando...</div>
+            {ldgDB?<div style={{textAlign:"center",padding:"52px 0",color:C.textSoft}}>⏳ Cargando...</div>
             :filtrados.length===0?<div style={{textAlign:"center",padding:"52px 0",color:C.textSoft}}><div style={{fontSize:48,marginBottom:10}}>🗂</div><div style={{fontWeight:700,fontSize:16}}>Sin historias clínicas</div></div>
             :(
               <div style={{background:C.white,border:"1px solid "+C.border,borderRadius:14,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,.05)"}}>
@@ -579,11 +680,12 @@ function App(){
                       </div>
                       <div style={{textAlign:"right",display:"flex",flexDirection:"column",gap:3,alignItems:"flex-end"}}>
                         <div style={{fontSize:11,color:C.textSoft}}>{h.fecha}</div>
-                        <span style={{background:badgeColor(h.estado),color:"#fff",borderRadius:20,padding:"2px 9px",fontSize:11,fontWeight:700}}>{h.estado}</span>
-                        {h.fromEnfermeria&&<span style={{background:C.teal,color:"#fff",borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700}}>ENF</span>}
+                        <span style={{background:bColor(h.estado),color:"#fff",borderRadius:20,padding:"2px 9px",fontSize:11,fontWeight:700}}>{h.estado}</span>
+                        {h.fromEnf&&<span style={{background:C.teal,color:"#fff",borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700}}>ENF</span>}
                         {h.interconsultas&&h.interconsultas.filter(function(ic){return ic.estado==="Pendiente";}).length>0&&<span style={{background:C.purple,color:"#fff",borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700}}>🔀 {h.interconsultas.filter(function(ic){return ic.estado==="Pendiente";}).length} IC</span>}
                       </div>
-                      <button onClick={function(e){e.stopPropagation();eliminarHC(h.id);}} style={{background:C.redLight,border:"1px solid "+C.red,color:C.red,borderRadius:7,padding:"4px 9px",cursor:"pointer",fontSize:11,fontWeight:700,marginLeft:8}}>🗑</button>
+                      <button onClick={function(e){e.stopPropagation();eliminar(h.id);}} style={{background:C.redLight,border:"1px solid "+C.red,color:C.red,borderRadius:7,padding:"4px 9px",cursor:"pointer",fontSize:11,fontWeight:700,marginLeft:4}}>🗑</button>
+                      <button onClick={function(e){e.stopPropagation();nuevaHCdesdePaciente(h.paciente.dni);}} title="Nueva HC usando datos de este paciente" style={{background:C.blueLight,border:"1px solid "+C.blue,color:C.blue,borderRadius:7,padding:"4px 9px",cursor:"pointer",fontSize:11,fontWeight:700,marginLeft:4}}>📋+</button>
                     </div>
                   );
                 })}
@@ -597,13 +699,36 @@ function App(){
           <div>
             <div style={{display:"flex",gap:8,marginBottom:14,alignItems:"center",flexWrap:"wrap"}}>
               <button onClick={function(){setVista("historial");}} style={{background:C.grayLight,border:"1px solid "+C.border,borderRadius:8,padding:"6px 14px",fontSize:12,fontWeight:700,cursor:"pointer",color:C.text}}>← Historial</button>
-              {hc.fromEnfermeria&&<span style={{background:C.teal,color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>Importado de Enfermería</span>}
+              {hc.fromEnf&&<span style={{background:C.teal,color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>Importado de Enfermería</span>}
+              {autoTs&&<span style={{fontSize:10,color:C.green,fontWeight:700}}>✓ Autoguardado {autoTs}</span>}
               <div style={{marginLeft:"auto",display:"flex",gap:8}}>
-                <Btn label="💾 Guardar" onClick={guardarHC} color={C.green} small/>
-                <Btn label="⬇ Exportar HTML" onClick={exportarHC} color={C.blue} small/>
+                <Btn label="💾 Guardar" onClick={guardar} color={C.green} small/>
+                <Btn label="⬇ Exportar" onClick={exportar} color={C.blue} small/>
               </div>
             </div>
 
+            {/* PANEL DICTADO GLOBAL */}
+            <div style={{background:dictActive?"#FFF0F0":C.white,border:"1px solid "+(dictActive?C.red:C.border),borderRadius:12,padding:"12px 16px",marginBottom:14}}>
+              <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:dictTxt?10:0}}>
+                <div style={{fontWeight:700,fontSize:13,color:C.text}}>🎙 Dictado Global</div>
+                <div style={{fontSize:11,color:C.textSoft,flex:1}}>Describe la consulta — la IA distribuye a los campos + sugiere CIE-10</div>
+                <button onClick={function(){dictActive?stopDict():startDict();}} style={{background:dictActive?C.red:C.green,color:"#fff",border:"none",borderRadius:8,padding:"7px 16px",fontWeight:700,fontSize:12,cursor:"pointer",animation:dictActive?"micpulse 1s infinite":"none"}}>
+                  {dictActive?"⏹ Detener":"🎙 Iniciar dictado"}
+                </button>
+                {dictTxt&&!dictActive&&<Btn label={dictProc?"⏳ Procesando...":"✦ Distribuir con IA"} onClick={procesarDict} disabled={dictProc} color={C.purple} small/>}
+                {dictTxt&&<Btn label="🗑 Limpiar" onClick={function(){setDictTxt("");}} color={C.gray} small/>}
+                {!hasSpeech&&<span style={{fontSize:11,color:C.amber,fontWeight:700}}>⚠ Usa Chrome o Edge</span>}
+              </div>
+              {dictActive&&<div style={{fontSize:12,fontWeight:700,color:C.red,marginBottom:8}}>🔴 Escuchando... hable con claridad</div>}
+              {dictTxt&&(
+                <div>
+                  <div style={{fontSize:10,fontWeight:700,color:C.textSoft,textTransform:"uppercase",marginBottom:4}}>Texto dictado:</div>
+                  <div style={{background:C.grayLight,borderRadius:8,padding:"8px 12px",fontSize:12,color:C.text,lineHeight:1.6,maxHeight:80,overflowY:"auto"}}>{dictTxt}</div>
+                </div>
+              )}
+            </div>
+
+            {/* DATOS PACIENTE */}
             <Card title="Datos del Paciente" icon="👤" tag="IDENTIFICACIÓN" tagColor={C.blue} accent={C.blueLight}>
               <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:10}}>
                 <Field label="Nombre" value={hc.paciente.nombre} onChange={function(v){upd("paciente","nombre",v);}}/>
@@ -618,75 +743,129 @@ function App(){
               </div>
             </Card>
 
-            <HCSection title="Anamnesis" icon="📋" tag="SUBJETIVO" tagColor={C.purple} accent={C.purpleLight} aiText={hc.anamnesis.aiText} aiLoading={ldg.an} onAI={genAnamnesis} onAIEdit={function(v){upd("anamnesis","aiText",v);}}>
-              <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:10}}>
-                <Field label="Motivo"    value={hc.anamnesis.motivo}   onChange={function(v){upd("anamnesis","motivo",v);}} full/>
-                <Field label="Evolución" value={hc.anamnesis.tEvol}    onChange={function(v){upd("anamnesis","tEvol",v);}}/>
-                <Field label="Síntomas"  value={hc.anamnesis.sintomas} onChange={function(v){upd("anamnesis","sintomas",v);}}/>
+            {/* ANAMNESIS */}
+            <Card title="Anamnesis" icon="📋" tag="SUBJETIVO" tagColor={C.purple} accent={C.purpleLight}>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
+                <div style={{display:"flex",gap:6,flex:"1 1 100%",alignItems:"flex-end"}}>
+                  <Field label="Motivo de consulta" value={hc.anamnesis.motivo} onChange={function(v){upd("anamnesis","motivo",v);}} full/>
+                  <MicBtn onAppend={function(t){upd("anamnesis","motivo",hc.anamnesis.motivo+(hc.anamnesis.motivo?" ":"")+t);}}/>
+                </div>
+                <div style={{display:"flex",gap:6,flex:1,minWidth:180,alignItems:"flex-end"}}>
+                  <Field label="Evolución" value={hc.anamnesis.tEvol} onChange={function(v){upd("anamnesis","tEvol",v);}}/>
+                  <MicBtn onAppend={function(t){upd("anamnesis","tEvol",hc.anamnesis.tEvol+(hc.anamnesis.tEvol?" ":"")+t);}}/>
+                </div>
+                <div style={{display:"flex",gap:6,flex:1,minWidth:180,alignItems:"flex-end"}}>
+                  <Field label="Síntomas" value={hc.anamnesis.sintomas} onChange={function(v){upd("anamnesis","sintomas",v);}}/>
+                  <MicBtn onAppend={function(t){upd("anamnesis","sintomas",hc.anamnesis.sintomas+(hc.anamnesis.sintomas?" ":"")+t);}}/>
+                </div>
               </div>
-            </HCSection>
+              <Btn label="✦ Redactar con IA" onClick={genAN} color={C.blue} small/>
+              <AIBox text={hc.anamnesis.aiText} loading={ldg.an}/>
+              {hc.anamnesis.aiText&&(
+                <div style={{marginTop:8}}>
+                  <Field label="✏ Editar" value={hc.anamnesis.aiText} onChange={function(v){upd("anamnesis","aiText",v);}} type="textarea" full/>
+                  <div style={{display:"flex",justifyContent:"flex-end",marginTop:3}}><span style={{fontSize:10,color:C.textSoft}}>{hc.anamnesis.aiText.length} caracteres</span></div>
+                </div>
+              )}
+            </Card>
 
-            <HCSection title="Antecedentes Ocupacionales" icon="🏭" tag="OCUPACIONAL" tagColor={C.amber} accent={C.amberLight} aiText={hc.antOcup.aiText} aiLoading={ldg.ao} onAI={genAntOcup} onAIEdit={function(v){upd("antOcup","aiText",v);}}>
+            {/* ANTECEDENTES OCUPACIONALES */}
+            <Card title="Antecedentes Ocupacionales" icon="🏭" tag="OCUPACIONAL" tagColor={C.amber} accent={C.amberLight}>
               <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:10}}>
-                <Field label="Exposiciones"       value={hc.antOcup.exposiciones} onChange={function(v){upd("antOcup","exposiciones",v);}} full/>
-                <Field label="Tiempo de servicio" value={hc.antOcup.tiempo}       onChange={function(v){upd("antOcup","tiempo",v);}}/>
-                <Field label="EPPs"               value={hc.antOcup.epps}         onChange={function(v){upd("antOcup","epps",v);}}/>
+                <Field label="Exposiciones" value={hc.antOcup.exposiciones} onChange={function(v){upd("antOcup","exposiciones",v);}} full/>
+                <Field label="Tiempo" value={hc.antOcup.tiempo} onChange={function(v){upd("antOcup","tiempo",v);}}/>
+                <Field label="EPPs" value={hc.antOcup.epps} onChange={function(v){upd("antOcup","epps",v);}}/>
               </div>
-            </HCSection>
+              <Btn label="✦ Redactar con IA" onClick={genAO} color={C.blue} small/>
+              <AIBox text={hc.antOcup.aiText} loading={ldg.ao}/>
+              {hc.antOcup.aiText&&<div style={{marginTop:8}}><Field label="✏ Editar" value={hc.antOcup.aiText} onChange={function(v){upd("antOcup","aiText",v);}} type="textarea" full/></div>}
+            </Card>
 
-            <HCSection title="Examen Físico" icon="🩺" tag="OBJETIVO" tagColor={C.teal} accent={C.tealLight} aiText={hc.exFisico.aiText} aiLoading={ldg.ef} onAI={genExFisico} aiLabel="✦ Interpretar con IA" onAIEdit={function(v){upd("exFisico","aiText",v);}}>
+            {/* EXAMEN FÍSICO */}
+            <Card title="Examen Físico" icon="🩺" tag="OBJETIVO" tagColor={C.teal} accent={C.tealLight}>
               <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}>
                 {[["pa","PA (mmHg)"],["fc","FC (lpm)"],["fr","FR (rpm)"],["temp","Temp °C"]].map(function(arr){
-                  var k=arr[0],l=arr[1];
-                  var s=paramStatus(k,hc.exFisico[k]);
-                  return <BadgeValue key={k} label={l} value={hc.exFisico[k]} color={s.color} bg={s.bg}/>;
+                  var k=arr[0],l=arr[1],s=pStatus(k,hc.exFisico[k]);
+                  return <BV key={k} label={l} value={hc.exFisico[k]} color={s.color} bg={s.bg}/>;
                 })}
               </div>
               <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:10}}>
-                <Field label="Peso kg" value={hc.exFisico.peso}   onChange={function(v){upd("exFisico","peso",v);}}/>
-                <Field label="Talla m" value={hc.exFisico.talla}  onChange={function(v){upd("exFisico","talla",v);}}/>
+                <Field label="Peso kg" value={hc.exFisico.peso} onChange={function(v){upd("exFisico","peso",v);}}/>
+                <Field label="Talla m" value={hc.exFisico.talla} onChange={function(v){upd("exFisico","talla",v);}}/>
                 <div style={{display:"flex",flexDirection:"column",gap:3,flex:1,minWidth:90}}>
                   <label style={{fontSize:11,fontWeight:700,color:C.textSoft,textTransform:"uppercase"}}>IMC</label>
-                  <div style={{border:"1px solid "+C.border,borderRadius:8,padding:"8px 10px",fontSize:14,fontWeight:700,color:C.blue,background:C.blueLight}}>{imcVal()}</div>
+                  <div style={{border:"1px solid "+C.border,borderRadius:8,padding:"8px 10px",fontSize:14,fontWeight:700,color:C.blue,background:C.blueLight}}>{imc()}</div>
                 </div>
               </div>
-              <Field label="Hallazgos por sistemas" value={hc.exFisico.hallazgos} onChange={function(v){upd("exFisico","hallazgos",v);}} type="textarea" full/>
-            </HCSection>
+              <div style={{display:"flex",gap:6,alignItems:"flex-end",marginBottom:8}}>
+                <Field label="Hallazgos por sistemas" value={hc.exFisico.hallazgos} onChange={function(v){upd("exFisico","hallazgos",v);}} type="textarea" full/>
+                <MicBtn onAppend={function(t){upd("exFisico","hallazgos",hc.exFisico.hallazgos+(hc.exFisico.hallazgos?" ":"")+t);}}/>
+              </div>
+              <Btn label="✦ Interpretar con IA" onClick={genEF} color={C.blue} small/>
+              <AIBox text={hc.exFisico.aiText} loading={ldg.ef}/>
+              {hc.exFisico.aiText&&<div style={{marginTop:8}}><Field label="✏ Editar" value={hc.exFisico.aiText} onChange={function(v){upd("exFisico","aiText",v);}} type="textarea" full/></div>}
+            </Card>
 
+            {/* LABORATORIO */}
             <Card title="Laboratorio" icon="🔬" tag="ANÁLISIS" tagColor={C.green} accent={C.greenLight}>
-              <input ref={labRef} type="file" accept="application/pdf" style={{display:"none"}} onChange={handleLabPDF}/>
+              <input ref={labRef} type="file" accept="application/pdf" style={{display:"none"}} onChange={handleLab}/>
               <button onClick={function(){labRef.current.click();}} style={{border:"2px dashed "+C.green,borderRadius:10,padding:"14px 20px",textAlign:"center",cursor:"pointer",background:C.greenLight,width:"100%",color:C.green,fontWeight:700,fontSize:13}}>📎 Cargar PDF de laboratorio</button>
-              <AIResult text={hc.laboratorio.aiText} loading={ldg.lab}/>
+              <AIBox text={hc.laboratorio.aiText} loading={ldg.lab}/>
               {hc.laboratorio.aiText&&<div style={{marginTop:8}}><Field label="✏ Editar" value={hc.laboratorio.aiText} onChange={function(v){setHC(function(h){return Object.assign({},h,{laboratorio:{aiText:v,resumen:v}});});}} type="textarea" full/></div>}
             </Card>
 
-            <HCSection title="Diagnóstico CIE-10" icon="🏷" tag="DIAGNÓSTICO" tagColor={C.red} accent={C.redLight} aiText={hc.diagnostico.aiText} aiLoading={ldg.dx} onAI={genDx} aiLabel="✦ Sugerir con IA">
+            {/* DIAGNÓSTICO */}
+            <Card title="Diagnóstico CIE-10" icon="🏷" tag="DIAGNÓSTICO" tagColor={C.red} accent={C.redLight}>
               <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:10}}>
-                <Field label="CIE-10 frecuente"     value={hc.diagnostico.cie10} onChange={function(v){upd("diagnostico","cie10",v);}} type="select" options={["— Seleccionar —"].concat(CIE10)}/>
+                <Field label="CIE-10 frecuente" value={hc.diagnostico.cie10} onChange={function(v){upd("diagnostico","cie10",v);}} type="select" options={["— Seleccionar —"].concat(CIE10)}/>
                 <Field label="O escribir diagnóstico" value={hc.diagnostico.cie10} onChange={function(v){upd("diagnostico","cie10",v);}}/>
               </div>
-            </HCSection>
+              <Btn label="✦ Sugerir con IA" onClick={genDX} color={C.blue} small/>
+              <AIBox text={hc.diagnostico.aiText} loading={ldg.dx}/>
+              {hc.diagnostico.aiText&&(
+                <div style={{display:"flex",justifyContent:"flex-end",marginTop:4}}>
+                  <span style={{fontSize:10,color:hc.diagnostico.aiText.length>300?C.red:hc.diagnostico.aiText.length>200?C.amber:C.textSoft,fontWeight:hc.diagnostico.aiText.length>200?700:400}}>
+                    {hc.diagnostico.aiText.length} caracteres {hc.diagnostico.aiText.length>300?"⚠ extenso para documento":""}
+                  </span>
+                </div>
+              )}
+            </Card>
 
-            <HCSection title="Plan / Indicaciones" icon="💊" tag="TRATAMIENTO" tagColor={C.blue} accent={C.blueLight} aiText={hc.plan.aiText} aiLoading={ldg.pl} onAI={genPlan} aiLabel="✦ Generar plan con IA + Web 🌐" onAIEdit={function(v){upd("plan","aiText",v);}}>
-              <Field label="Notas" value={hc.plan.indicaciones} onChange={function(v){upd("plan","indicaciones",v);}} type="textarea" full/>
-            </HCSection>
+            {/* PLAN */}
+            <Card title="Plan / Indicaciones" icon="💊" tag="TRATAMIENTO" tagColor={C.blue} accent={C.blueLight}>
+              <div style={{display:"flex",gap:6,alignItems:"flex-end",marginBottom:8}}>
+                <Field label="Notas" value={hc.plan.indicaciones} onChange={function(v){upd("plan","indicaciones",v);}} type="textarea" full/>
+                <MicBtn onAppend={function(t){upd("plan","indicaciones",hc.plan.indicaciones+(hc.plan.indicaciones?" ":"")+t);}}/>
+              </div>
+              <Btn label="✦ Generar plan con IA + Web 🌐" onClick={genPL} color={C.blue} small/>
+              <AIBox text={hc.plan.aiText} loading={ldg.pl}/>
+              {hc.plan.aiText&&<div style={{marginTop:8}}><Field label="✏ Editar" value={hc.plan.aiText} onChange={function(v){upd("plan","aiText",v);}} type="textarea" full/></div>}
+            </Card>
 
-            <HCSection title="Aptitud Médico-Ocupacional" icon="✅" tag="CAMO" tagColor={C.teal} accent={C.tealLight} aiText={hc.aptitud.aiText} aiLoading={ldg.apt} onAI={genAptitud} onAIEdit={function(v){upd("aptitud","aiText",v);}}>
+            {/* APTITUD */}
+            <Card title="Aptitud Médico-Ocupacional" icon="✅" tag="CAMO" tagColor={C.teal} accent={C.tealLight}>
               <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:10}}>
                 <Field label="Resultado" value={hc.aptitud.resultado} onChange={function(v){upd("aptitud","resultado",v);}} type="select" options={["Apto","Apto con restricciones","No apto temporal","No apto permanente"]}/>
-                <Field label="Restricciones" value={hc.aptitud.restricciones} onChange={function(v){upd("aptitud","restricciones",v);}}/>
+                <div style={{display:"flex",gap:6,flex:1,alignItems:"flex-end"}}>
+                  <Field label="Restricciones" value={hc.aptitud.restricciones} onChange={function(v){upd("aptitud","restricciones",v);}}/>
+                  <MicBtn onAppend={function(t){upd("aptitud","restricciones",hc.aptitud.restricciones+(hc.aptitud.restricciones?" ":"")+t);}}/>
+                </div>
               </div>
               <span style={{background:hc.aptitud.resultado==="Apto"?C.green:hc.aptitud.resultado.includes("restricciones")?C.amber:C.red,color:"#fff",borderRadius:20,padding:"3px 12px",fontSize:12,fontWeight:700}}>{hc.aptitud.resultado.toUpperCase()}</span>
-            </HCSection>
+              <div style={{marginTop:8}}><Btn label="✦ Redactar con IA" onClick={genAPT} color={C.blue} small/></div>
+              <AIBox text={hc.aptitud.aiText} loading={ldg.apt}/>
+              {hc.aptitud.aiText&&<div style={{marginTop:8}}><Field label="✏ Editar" value={hc.aptitud.aiText} onChange={function(v){upd("aptitud","aiText",v);}} type="textarea" full/></div>}
+            </Card>
 
+            {/* INTERCONSULTAS */}
             <Card title="Interconsultas" icon="🔀" tag="DERIVACIONES" tagColor={C.purple} accent={C.purpleLight}>
               <div style={{marginBottom:10}}><Btn label="+ Agregar" onClick={addIC} color={C.purple} small/></div>
-              {hc.interconsultas.length===0&&<div style={{color:C.textSoft,fontSize:12,textAlign:"center",padding:"10px 0"}}>Sin interconsultas registradas</div>}
+              {hc.interconsultas.length===0&&<div style={{color:C.textSoft,fontSize:12,textAlign:"center",padding:"10px 0"}}>Sin interconsultas</div>}
               {hc.interconsultas.map(function(ic){
                 return(
                   <div key={ic.id} style={{border:"1px solid "+C.border,borderRadius:10,padding:12,marginBottom:10,background:C.grayLight}}>
                     <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:8}}>
-                      <Field label="Especialidad" value={ic.especialidad} onChange={function(v){updIC(ic.id,"especialidad",v);}} type="select" options={ESPECIALIDADES}/>
+                      <Field label="Especialidad" value={ic.especialidad} onChange={function(v){updIC(ic.id,"especialidad",v);}} type="select" options={ESPEC}/>
                       <Field label="Urgencia"     value={ic.urgencia}    onChange={function(v){updIC(ic.id,"urgencia",v);}}    type="select" options={["Electiva","Preferente","Urgente"]}/>
                       <Field label="Estado"       value={ic.estado}      onChange={function(v){updIC(ic.id,"estado",v);}}      type="select" options={["Pendiente","Enviada","Respondida"]}/>
                     </div>
@@ -696,16 +875,17 @@ function App(){
                       <Btn label="🗑" onClick={function(){delIC(ic.id);}} color={C.red} small/>
                     </div>
                     {ldg["ic_"+ic.id]&&<div style={{color:C.blue,fontSize:12,fontStyle:"italic",marginTop:7}}>⏳ IA procesando...</div>}
-                    {ic.aiText&&<><div style={{background:C.purpleLight,border:"1px solid "+C.purple,borderRadius:8,padding:"9px 12px",fontSize:12,marginTop:7,lineHeight:1.6}}><strong style={{color:C.purple}}>✦ IA:</strong> {ic.aiText}</div><div style={{marginTop:8}}><Field label="✏ Editar" value={ic.aiText} onChange={function(v){updIC(ic.id,"aiText",v);}} type="textarea" full/></div></>}
+                    {ic.aiText&&<div style={{background:C.purpleLight,border:"1px solid "+C.purple,borderRadius:8,padding:"9px 12px",fontSize:12,marginTop:7,lineHeight:1.6}}><strong style={{color:C.purple}}>✦ IA:</strong> {ic.aiText}</div>}
+                    {ic.aiText&&<div style={{marginTop:8}}><Field label="✏ Editar" value={ic.aiText} onChange={function(v){updIC(ic.id,"aiText",v);}} type="textarea" full/></div>}
                   </div>
                 );
               })}
             </Card>
 
             <div style={{display:"flex",gap:8,justifyContent:"flex-end",paddingBottom:28}}>
-              <Btn label="← Volver"        onClick={function(){setVista("historial");}} color={C.gray} small/>
-              <Btn label="💾 Guardar HC"   onClick={guardarHC} color={C.green}/>
-              <Btn label="⬇ Exportar HTML" onClick={exportarHC} color={C.blue}/>
+              <Btn label="← Volver"      onClick={function(){setVista("historial");}} color={C.gray} small/>
+              <Btn label="💾 Guardar HC" onClick={guardar} color={C.green}/>
+              <Btn label="⬇ Exportar"   onClick={exportar} color={C.blue}/>
             </div>
           </div>
         )}
@@ -714,19 +894,19 @@ function App(){
         {vista==="dashboard"&&(
           <div>
             <div style={{display:"flex",gap:8,marginBottom:16,alignItems:"center",flexWrap:"wrap"}}>
-              {dashVista!=="buscar"&&<button onClick={function(){setDashVista("buscar");setDashPac(null);setDashConsultas([]);}} style={{background:C.grayLight,border:"1px solid "+C.border,borderRadius:8,padding:"6px 14px",fontSize:12,fontWeight:700,cursor:"pointer",color:C.text}}>← Cambiar paciente</button>}
-              {dashPac&&dashVista==="dashboard"&&<Btn label="+ Nueva consulta" onClick={function(){setDashVista("nueva");}} color={C.green} small/>}
+              {dashV!=="buscar"&&<button onClick={function(){setDashV("buscar");setDashPac(null);setDashC([]);}} style={{background:C.grayLight,border:"1px solid "+C.border,borderRadius:8,padding:"6px 14px",fontSize:12,fontWeight:700,cursor:"pointer",color:C.text}}>← Cambiar paciente</button>}
+              {dashPac&&dashV==="dashboard"&&<Btn label="+ Nueva consulta" onClick={function(){setDashV("nueva");}} color={C.green} small/>}
               {dashPac&&<span style={{fontSize:13,fontWeight:700,color:C.text}}>{dashPac.paciente?dashPac.paciente.nombre:dashPac.nombre}</span>}
             </div>
 
-            {dashVista==="buscar"&&(
+            {dashV==="buscar"&&(
               <div style={{maxWidth:560,margin:"0 auto"}}>
                 <div style={{textAlign:"center",padding:"24px 0 20px"}}><div style={{fontSize:44,marginBottom:8}}>📊</div><div style={{fontWeight:800,fontSize:18}}>Seguimiento Metabólico</div></div>
                 <input value={dashBusq} onChange={function(e){setDashBusq(e.target.value);}} placeholder="🔍 Buscar paciente..." style={{width:"100%",border:"1px solid "+C.border,borderRadius:8,padding:"10px 14px",fontSize:14,background:C.white,outline:"none",color:C.text,boxSizing:"border-box",marginBottom:14}}/>
                 <div style={{background:C.white,border:"1px solid "+C.border,borderRadius:12,overflow:"hidden"}}>
-                  {historial.filter(function(h){var n=(h.paciente&&h.paciente.nombre?h.paciente.nombre:"").toLowerCase();return n.includes(dashBusq.toLowerCase())||(h.paciente&&h.paciente.dni?h.paciente.dni:"").includes(dashBusq);}).filter(function(h,i,arr){return arr.findIndex(function(x){return x.paciente&&h.paciente&&x.paciente.dni===h.paciente.dni;})===i;}).map(function(h,i,arr){
+                  {hist.filter(function(h){var n=(h.paciente&&h.paciente.nombre?h.paciente.nombre:"").toLowerCase();return n.includes(dashBusq.toLowerCase())||(h.paciente&&h.paciente.dni?h.paciente.dni:"").includes(dashBusq);}).filter(function(h,i,arr){return arr.findIndex(function(x){return x.paciente&&h.paciente&&x.paciente.dni===h.paciente.dni;})===i;}).map(function(h,i,arr){
                     return(
-                      <div key={h.id} onClick={function(){selDashPac(h);}} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderBottom:i<arr.length-1?"1px solid "+C.border:"none",cursor:"pointer",background:i%2===0?C.white:C.grayLight}}>
+                      <div key={h.id} onClick={function(){selPac(h);}} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderBottom:i<arr.length-1?"1px solid "+C.border:"none",cursor:"pointer",background:i%2===0?C.white:C.grayLight}}>
                         <div style={{width:34,height:34,borderRadius:"50%",background:C.blueLight,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,color:C.blue,fontSize:13}}>{(h.paciente&&h.paciente.nombre?h.paciente.nombre[0]:"?").toUpperCase()}</div>
                         <div style={{flex:1}}><div style={{fontWeight:700,fontSize:13}}>{h.paciente?h.paciente.nombre:"—"}</div><div style={{fontSize:11,color:C.textSoft}}>DNI: {h.paciente?h.paciente.dni:"—"} · {h.paciente?h.paciente.empresa:"—"}</div></div>
                         <span style={{fontSize:12,color:C.blue,fontWeight:700}}>Ver →</span>
@@ -737,26 +917,25 @@ function App(){
               </div>
             )}
 
-            {dashVista==="dashboard"&&dashPac&&(function(){
-              var semActual=ultimaC?(ultimaC.semaforo||calcSemaforo(ultimaC)):null;
-              var smLevel=sm?(sm.dx&&sm.dx.includes("✓")?"Alto":sm.dx&&sm.dx.includes("Riesgo")?"Moderado":"Bajo"):"Bajo";
+            {dashV==="dashboard"&&dashPac&&(function(){
+              var semA=ultiC?(ultiC.semaforo||calcSem(ultiC)):null;
+              var smL=sm?(sm.dx&&sm.dx.includes("✓")?"Alto":sm.dx&&sm.dx.includes("Riesgo")?"Moderado":"Bajo"):"Bajo";
               return(
                 <div>
                   <div style={{display:"flex",gap:12,marginBottom:14,flexWrap:"wrap"}}>
                     <div style={{flex:2,minWidth:200,background:C.white,border:"1px solid "+C.border,borderRadius:14,padding:"14px 18px"}}>
                       <div style={{fontWeight:800,fontSize:15}}>{dashPac.paciente?dashPac.paciente.nombre:dashPac.nombre}</div>
                       <div style={{fontSize:11,color:C.textSoft}}>DNI: {dashPac.paciente?dashPac.paciente.dni:dashPac.dni} · {(dashPac.paciente?dashPac.paciente.empresa:dashPac.empresa)||"—"}</div>
-                      <div style={{fontSize:12,color:C.textSoft,marginTop:4}}>Consultas: <strong style={{color:C.blue}}>{dashConsultas.length}</strong></div>
+                      <div style={{fontSize:12,color:C.textSoft,marginTop:4}}>Consultas: <strong style={{color:C.blue}}>{dashC.length}</strong></div>
                     </div>
-                    {ultimaC&&<div style={{flex:1,minWidth:130,background:riskColor(semActual),borderRadius:14,padding:14,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",color:"#fff"}}>
-                      <div style={{fontWeight:900,fontSize:17}}>{semActual}</div>
-                      <div style={{fontSize:10,opacity:.9}}>Riesgo metabólico</div>
-                      <div style={{fontSize:11,fontWeight:700,marginTop:4}}>{ultimaC.dx_metabolico}</div>
+                    {ultiC&&<div style={{flex:1,minWidth:130,background:riskColor(semA),borderRadius:14,padding:14,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",color:"#fff"}}>
+                      <div style={{fontWeight:900,fontSize:17}}>{semA}</div><div style={{fontSize:10,opacity:.9}}>Riesgo metabólico</div>
+                      <div style={{fontSize:11,fontWeight:700,marginTop:4}}>{ultiC.dx_metabolico}</div>
                     </div>}
-                    {sm&&<div style={{flex:1,minWidth:150,background:riskBg(smLevel),border:"1px solid "+riskColor(smLevel),borderRadius:14,padding:14,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+                    {sm&&<div style={{flex:1,minWidth:150,background:riskBg(smL),border:"1px solid "+riskColor(smL),borderRadius:14,padding:14,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
                       <div style={{fontSize:11,fontWeight:700,color:C.textSoft,textTransform:"uppercase",marginBottom:4}}>S. Metabólico IDF</div>
-                      <div style={{fontSize:12,fontWeight:800,color:riskColor(smLevel),textAlign:"center"}}>{sm.dx}</div>
-                      <div style={{fontSize:10,color:C.textSoft,marginTop:4}}>{sm.otros}/4 criterios</div>
+                      <div style={{fontSize:12,fontWeight:800,color:riskColor(smL),textAlign:"center"}}>{sm.dx}</div>
+                      <div style={{fontSize:10,color:C.textSoft,marginTop:4}}>{sm.ot}/4 criterios</div>
                     </div>}
                     {atero.global&&<div style={{flex:1,minWidth:120,background:riskBg(atero.global),border:"1px solid "+riskColor(atero.global),borderRadius:14,padding:14,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
                       <div style={{fontSize:11,fontWeight:700,color:C.textSoft,textTransform:"uppercase",marginBottom:4}}>Índice Aterogénico</div>
@@ -764,93 +943,75 @@ function App(){
                     </div>}
                   </div>
 
-                  {dashConsultas.length===0?(
+                  {dashC.length===0?(
                     <div style={{textAlign:"center",padding:40,color:C.textSoft,background:C.white,borderRadius:14,border:"1px solid "+C.border}}><div style={{fontSize:36,marginBottom:8}}>📋</div><div style={{fontWeight:700}}>Sin consultas metabólicas</div></div>
                   ):(
                     <div>
                       {(atero.ct_hdl||atero.ldl_hdl||atero.tg_hdl)&&(
                         <Card title="Índice Aterogénico" icon="🫀" tag="Última consulta" tagColor={C.red} accent={C.redLight}>
                           <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:12}}>
-                            <AteroBadge label="CT / HDL (Castelli I)"   value={atero.ct_hdl}  riesgo={atero.ct_hdl_riesgo}/>
-                            <AteroBadge label="LDL / HDL (Castelli II)" value={atero.ldl_hdl} riesgo={atero.ldl_hdl_riesgo}/>
-                            <AteroBadge label="TG / HDL (aterogénico)"  value={atero.tg_hdl}  riesgo={atero.tg_hdl_riesgo}/>
+                            <AB label="CT/HDL (Castelli I)"   value={atero.ct_hdl}  riesgo={atero.ct_hdl_r}/>
+                            <AB label="LDL/HDL (Castelli II)" value={atero.ldl_hdl} riesgo={atero.ldl_hdl_r}/>
+                            <AB label="TG/HDL (aterogénico)"  value={atero.tg_hdl}  riesgo={atero.tg_hdl_r}/>
                           </div>
                           <div style={{background:C.grayLight,borderRadius:8,padding:"8px 12px",fontSize:11,color:C.textSoft}}>CT/HDL &lt;3.5=Bajo · LDL/HDL &lt;2.5=Bajo · TG/HDL &lt;2=Bajo</div>
                         </Card>
                       )}
-
                       {sm&&(
-                        <Card title="Síndrome Metabólico — IDF 2006" icon="⚕️" tag={sm.dx} tagColor={riskColor(smLevel)} accent={riskBg(smLevel)}>
-                          <div style={{fontSize:11,color:C.textSoft,marginBottom:10}}>Criterio central: <strong>CA</strong> (H≥90cm / M≥80cm) + 2 de 4</div>
+                        <Card title="Síndrome Metabólico IDF 2006" icon="⚕️" tag={sm.dx} tagColor={riskColor(smL)} accent={riskBg(smL)}>
+                          <div style={{fontSize:11,color:C.textSoft,marginBottom:10}}>Criterio central: CA (H≥90cm / M≥80cm) + 2 de 4</div>
                           <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
-                            <SMBadge label="Circ. Abdominal" positivo={sm.criterios.ca} noEval={sm.criterios.ca===null} valor={ultimaC&&ultimaC.circunferencia_abdominal?ultimaC.circunferencia_abdominal+" cm":null}/>
-                            <SMBadge label="TG ≥150"         positivo={sm.criterios.tg} noEval={sm.criterios.tg===null} valor={ultimaC&&ultimaC.trigliceridos?ultimaC.trigliceridos+" mg/dL":null}/>
-                            <SMBadge label="HDL bajo"        positivo={sm.criterios.hdl} noEval={sm.criterios.hdl===null} valor={ultimaC&&ultimaC.hdl?ultimaC.hdl+" mg/dL":null}/>
-                            <SMBadge label="PA ≥130/85"      positivo={sm.criterios.pa} noEval={sm.criterios.pa===null} valor={(ultimaC&&ultimaC.pa_sistolica&&ultimaC.pa_diastolica)?ultimaC.pa_sistolica+"/"+ultimaC.pa_diastolica:null}/>
-                            <SMBadge label="Glucosa ≥100"    positivo={sm.criterios.gluc} noEval={sm.criterios.gluc===null} valor={ultimaC&&ultimaC.glucosa_ayunas?ultimaC.glucosa_ayunas+" mg/dL":null}/>
+                            <SMB label="Circ. Abdominal" positivo={sm.cr.ca} noEval={sm.cr.ca===null} valor={ultiC&&ultiC.circunferencia_abdominal?ultiC.circunferencia_abdominal+" cm":null}/>
+                            <SMB label="TG ≥150"         positivo={sm.cr.tg} noEval={sm.cr.tg===null} valor={ultiC&&ultiC.trigliceridos?ultiC.trigliceridos+" mg/dL":null}/>
+                            <SMB label="HDL bajo"        positivo={sm.cr.hdl} noEval={sm.cr.hdl===null} valor={ultiC&&ultiC.hdl?ultiC.hdl+" mg/dL":null}/>
+                            <SMB label="PA ≥130/85"      positivo={sm.cr.pa} noEval={sm.cr.pa===null} valor={(ultiC&&ultiC.pa_sistolica&&ultiC.pa_diastolica)?ultiC.pa_sistolica+"/"+ultiC.pa_diastolica:null}/>
+                            <SMB label="Glucosa ≥100"    positivo={sm.cr.gl} noEval={sm.cr.gl===null} valor={ultiC&&ultiC.glucosa_ayunas?ultiC.glucosa_ayunas+" mg/dL":null}/>
                           </div>
-                          {sm.criterios.ca===null&&<div style={{background:C.amberLight,border:"1px solid "+C.amber,borderRadius:8,padding:"8px 12px",fontSize:11,color:"#7B4F00"}}>⚠️ Ingresar circunferencia abdominal para evaluación completa.</div>}
+                          {sm.cr.ca===null&&<div style={{background:C.amberLight,border:"1px solid "+C.amber,borderRadius:8,padding:"8px 12px",fontSize:11,color:"#7B4F00"}}>⚠️ Ingresar circunferencia abdominal para evaluación completa.</div>}
                         </Card>
                       )}
-
-                      <Card title="Evolución de Parámetros" icon="📈" accent={C.blueLight} tagColor={C.blue} tag={dashConsultas.length+" consultas"}>
+                      <Card title="Evolución de Parámetros" icon="📈" accent={C.blueLight} tagColor={C.blue} tag={dashC.length+" consultas"}>
                         <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
-                          {Object.entries(PARAMS).map(function(entry){var k=entry[0],p=entry[1];return(
-                            <button key={k} onClick={function(){setDashParamsSel(function(prev){return prev.includes(k)?prev.filter(function(x){return x!==k;}):prev.concat([k]);});}}
-                              style={{borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer",border:"2px solid "+(dashParamsSel.includes(k)?p.color:C.border),background:dashParamsSel.includes(k)?p.color+"18":"transparent",color:dashParamsSel.includes(k)?p.color:C.textSoft}}>
-                              {p.label}
-                            </button>
+                          {Object.keys(PARAMS).map(function(k){var p=PARAMS[k];return(
+                            <button key={k} onClick={function(){setPSel(function(prev){return prev.includes(k)?prev.filter(function(x){return x!==k;}):prev.concat([k]);});}} style={{borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer",border:"2px solid "+(pSel.includes(k)?p.color:C.border),background:pSel.includes(k)?p.color+"18":"transparent",color:pSel.includes(k)?p.color:C.textSoft}}>{p.label}</button>
                           );})}
                         </div>
-                        <LineChartSVG
-                          data={dashConsultas}
-                          params={dashParamsSel}
-                          paramsMeta={PARAMS}
-                          refLines={[
-                            ...(dashParamsSel.includes("glucosa_ayunas")?[{y:100,color:C.red,label:"Gluc 100"}]:[]),
-                            ...(dashParamsSel.includes("colesterol_total")?[{y:200,color:C.purple,label:"CT 200"}]:[]),
-                            ...(dashParamsSel.includes("trigliceridos")?[{y:150,color:C.amber,label:"TG 150"}]:[]),
-                          ]}
-                        />
+                        <ChartSVG data={dashC} params={pSel} meta={PARAMS} refs={[
+                          ...(pSel.includes("glucosa_ayunas")?[{y:100,color:C.red,label:"Gluc 100"}]:[]),
+                          ...(pSel.includes("colesterol_total")?[{y:200,color:C.purple,label:"CT 200"}]:[]),
+                          ...(pSel.includes("trigliceridos")?[{y:150,color:C.amber,label:"TG 150"}]:[])
+                        ]}/>
                       </Card>
-
                       <Card title="Tabla Comparativa" icon="📋" accent={C.tealLight} tagColor={C.teal}>
                         <div style={{overflowX:"auto"}}>
                           <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
                             <thead><tr style={{background:C.grayLight}}>
                               <th style={{padding:"7px 10px",textAlign:"left",fontWeight:700,color:C.textSoft,borderBottom:"1px solid "+C.border}}>Parámetro</th>
-                              {dashConsultas.map(function(c){return(
-                                <th key={c.id} style={{padding:"7px 10px",textAlign:"center",fontWeight:700,color:C.blue,borderBottom:"1px solid "+C.border,whiteSpace:"nowrap"}}>
-                                  {c.fecha}<button onClick={function(){eliminarMetabolico(c.id);}} style={{marginLeft:4,background:"none",border:"none",cursor:"pointer",color:C.red,fontSize:10}}>🗑</button>
-                                </th>
-                              );})}
+                              {dashC.map(function(c){return<th key={c.id} style={{padding:"7px 10px",textAlign:"center",fontWeight:700,color:C.blue,borderBottom:"1px solid "+C.border,whiteSpace:"nowrap"}}>{c.fecha}<button onClick={function(){delMet(c.id);}} style={{marginLeft:4,background:"none",border:"none",cursor:"pointer",color:C.red,fontSize:10}}>🗑</button></th>;})}
                             </tr></thead>
                             <tbody>
-                              {Object.entries(PARAMS).map(function(entry){var k=entry[0],p=entry[1];return(
+                              {Object.keys(PARAMS).map(function(k){var p=PARAMS[k];return(
                                 <tr key={k} style={{borderBottom:"1px solid "+C.border}}>
                                   <td style={{padding:"6px 10px",fontWeight:600,whiteSpace:"nowrap"}}>{p.label} <span style={{color:C.textSoft,fontSize:9}}>({p.unit})</span></td>
-                                  {dashConsultas.map(function(c,i){
-                                    var val=parseFloat(c[k]);var prev=i>0?parseFloat(dashConsultas[i-1][k]):null;var t=tend(val,prev);
-                                    var s=paramStatus(k,val);
-                                    return(<td key={c.id} style={{padding:"6px 10px",textAlign:"center"}}>
-                                      <span style={{color:s.color,fontWeight:700}}>{val||"—"}</span>
+                                  {dashC.map(function(c,i){var val=parseFloat(c[k]);var prev=i>0?parseFloat(dashC[i-1][k]):null;var t=tend(val,prev);var s2=pStatus(k,val);return(
+                                    <td key={c.id} style={{padding:"6px 10px",textAlign:"center"}}>
+                                      <span style={{color:s2.color,fontWeight:700}}>{val||"—"}</span>
                                       {t&&<span style={{color:t.color,fontSize:9,marginLeft:3}}>{t.icon}{t.d}%</span>}
-                                    </td>);
-                                  })}
+                                    </td>
+                                  );})}
                                 </tr>
                               );})}
                               <tr style={{background:C.grayLight}}>
                                 <td style={{padding:"6px 10px",fontWeight:700}}>Semáforo</td>
-                                {dashConsultas.map(function(c){var s=c.semaforo||calcSemaforo(c);return(<td key={c.id} style={{padding:"6px 10px",textAlign:"center"}}><span style={{background:riskColor(s),color:"#fff",borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700}}>{s}</span></td>);})}
+                                {dashC.map(function(c){var s2=c.semaforo||calcSem(c);return<td key={c.id} style={{padding:"6px 10px",textAlign:"center"}}><span style={{background:riskColor(s2),color:"#fff",borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700}}>{s2}</span></td>;})}
                               </tr>
                             </tbody>
                           </table>
                         </div>
                       </Card>
-
                       <Card title="Análisis con IA" icon="🤖" accent={C.purpleLight} tagColor={C.purple}>
-                        <Btn label={loadingIA?"⏳ Analizando...":"✦ Analizar evolución completa con IA"} onClick={analizarIA} disabled={loadingIA} color={C.purple}/>
-                        {ultimaC&&ultimaC.analisis_ia&&<div style={{background:C.purpleLight,border:"1px solid "+C.purple,borderRadius:10,padding:14,fontSize:12,lineHeight:1.8,whiteSpace:"pre-wrap",marginTop:12}}>{ultimaC.analisis_ia}</div>}
+                        <Btn label={ldgIA?"⏳ Analizando...":"✦ Analizar evolución completa con IA"} onClick={analIA} disabled={ldgIA} color={C.purple}/>
+                        {ultiC&&ultiC.analisis_ia&&<div style={{background:C.purpleLight,border:"1px solid "+C.purple,borderRadius:10,padding:14,fontSize:12,lineHeight:1.8,whiteSpace:"pre-wrap",marginTop:12}}>{ultiC.analisis_ia}</div>}
                       </Card>
                     </div>
                   )}
@@ -858,75 +1019,65 @@ function App(){
               );
             })()}
 
-            {dashVista==="nueva"&&dashPac&&(
+            {dashV==="nueva"&&dashPac&&(
               <div>
                 <Card title="Antropométricos + PA" icon="⚖" accent={C.tealLight} tagColor={C.teal}>
                   <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:10}}>
                     {[["fecha","Fecha","date"],["peso","Peso (kg)","number"],["talla","Talla (m)","number"]].map(function(arr){var k=arr[0],l=arr[1],t=arr[2];return(
                       <div key={k} style={{display:"flex",flexDirection:"column",gap:2,flex:1,minWidth:110}}>
                         <label style={{fontSize:10,fontWeight:700,color:C.textSoft,textTransform:"uppercase"}}>{l}</label>
-                        <input type={t} value={dashForm[k]} onChange={function(e){updD(k,e.target.value);}} style={{border:"1px solid "+C.border,borderRadius:7,padding:"7px 8px",fontSize:13,background:C.grayLight,outline:"none",color:C.text,width:"100%",boxSizing:"border-box"}}/>
+                        <input type={t} value={dashF[k]} onChange={function(e){updD(k,e.target.value);}} style={{border:"1px solid "+C.border,borderRadius:7,padding:"7px 8px",fontSize:13,background:C.grayLight,outline:"none",color:C.text,width:"100%",boxSizing:"border-box"}}/>
                       </div>
                     );})}
                     <div style={{display:"flex",flexDirection:"column",gap:2,flex:1,minWidth:130}}>
                       <label style={{fontSize:10,fontWeight:700,color:C.red,textTransform:"uppercase"}}>Circ. Abd. (cm) ★SM</label>
-                      <input type="number" value={dashForm.circunferencia_abdominal} onChange={function(e){updD("circunferencia_abdominal",e.target.value);}} style={{border:"1px solid "+C.red,borderRadius:7,padding:"7px 8px",fontSize:13,background:C.grayLight,outline:"none",color:C.text,width:"100%",boxSizing:"border-box"}}/>
+                      <input type="number" value={dashF.circunferencia_abdominal} onChange={function(e){updD("circunferencia_abdominal",e.target.value);}} style={{border:"1px solid "+C.red,borderRadius:7,padding:"7px 8px",fontSize:13,background:C.grayLight,outline:"none",color:C.text,width:"100%",boxSizing:"border-box"}}/>
                     </div>
                     <div style={{display:"flex",flexDirection:"column",gap:2,flex:1,minWidth:100}}>
                       <label style={{fontSize:10,fontWeight:700,color:C.textSoft,textTransform:"uppercase"}}>IMC</label>
                       <div style={{display:"flex",gap:4}}>
-                        <input value={dashForm.imc} onChange={function(e){updD("imc",e.target.value);}} style={{flex:1,border:"1px solid "+C.border,borderRadius:7,padding:"7px 8px",fontSize:13,background:C.grayLight,outline:"none",color:C.text}}/>
+                        <input value={dashF.imc} onChange={function(e){updD("imc",e.target.value);}} style={{flex:1,border:"1px solid "+C.border,borderRadius:7,padding:"7px 8px",fontSize:13,background:C.grayLight,outline:"none",color:C.text}}/>
                         <button onClick={calcIMC} style={{background:C.teal,border:"none",borderRadius:7,padding:"7px 10px",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}>Calc</button>
                       </div>
                     </div>
                     {[["pa_sistolica","PA Sist."],["pa_diastolica","PA Diast."]].map(function(arr){var k=arr[0],l=arr[1];return(
                       <div key={k} style={{display:"flex",flexDirection:"column",gap:2,flex:1,minWidth:100}}>
                         <label style={{fontSize:10,fontWeight:700,color:C.textSoft,textTransform:"uppercase"}}>{l}</label>
-                        <input type="number" value={dashForm[k]} onChange={function(e){updD(k,e.target.value);}} style={{border:"1px solid "+C.border,borderRadius:7,padding:"7px 8px",fontSize:13,background:C.grayLight,outline:"none",color:C.text,width:"100%",boxSizing:"border-box"}}/>
+                        <input type="number" value={dashF[k]} onChange={function(e){updD(k,e.target.value);}} style={{border:"1px solid "+C.border,borderRadius:7,padding:"7px 8px",fontSize:13,background:C.grayLight,outline:"none",color:C.text,width:"100%",boxSizing:"border-box"}}/>
                       </div>
                     );})}
                   </div>
                 </Card>
-
                 <Card title="Perfil Lipídico" icon="🧪" accent={C.purpleLight} tagColor={C.purple}>
                   <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}>
-                    {[["colesterol_total","Colesterol T."],["hdl","HDL"],["ldl","LDL"],["vldl","VLDL"],["trigliceridos","Triglicéridos"]].map(function(arr){var k=arr[0],l=arr[1];return(
-                      <div key={k} style={{display:"flex",flexDirection:"column",gap:2,flex:1,minWidth:100}}>
+                    {[["colesterol_total","CT"],["hdl","HDL"],["ldl","LDL"],["vldl","VLDL"],["trigliceridos","TG"]].map(function(arr){var k=arr[0],l=arr[1];return(
+                      <div key={k} style={{display:"flex",flexDirection:"column",gap:2,flex:1,minWidth:90}}>
                         <label style={{fontSize:10,fontWeight:700,color:C.textSoft,textTransform:"uppercase"}}>{l}</label>
-                        <input type="number" value={dashForm[k]} onChange={function(e){updD(k,e.target.value);}} style={{border:"1px solid "+C.border,borderRadius:7,padding:"7px 8px",fontSize:13,background:C.grayLight,outline:"none",color:C.text,width:"100%",boxSizing:"border-box"}}/>
+                        <input type="number" value={dashF[k]} onChange={function(e){updD(k,e.target.value);}} style={{border:"1px solid "+C.border,borderRadius:7,padding:"7px 8px",fontSize:13,background:C.grayLight,outline:"none",color:C.text,width:"100%",boxSizing:"border-box"}}/>
                       </div>
                     );})}
                   </div>
-                  {(ateroForm.ct_hdl||ateroForm.ldl_hdl||ateroForm.tg_hdl)&&(
-                    <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:8}}>
-                      <AteroBadge label="CT/HDL"  value={ateroForm.ct_hdl}  riesgo={ateroForm.ct_hdl_riesgo}/>
-                      <AteroBadge label="LDL/HDL" value={ateroForm.ldl_hdl} riesgo={ateroForm.ldl_hdl_riesgo}/>
-                      <AteroBadge label="TG/HDL"  value={ateroForm.tg_hdl}  riesgo={ateroForm.tg_hdl_riesgo}/>
-                    </div>
-                  )}
+                  {(ateroF.ct_hdl||ateroF.ldl_hdl||ateroF.tg_hdl)&&<div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:8}}><AB label="CT/HDL" value={ateroF.ct_hdl} riesgo={ateroF.ct_hdl_r}/><AB label="LDL/HDL" value={ateroF.ldl_hdl} riesgo={ateroF.ldl_hdl_r}/><AB label="TG/HDL" value={ateroF.tg_hdl} riesgo={ateroF.tg_hdl_r}/></div>}
                 </Card>
-
                 <Card title="Glucometría + Renal" icon="🍬" accent={C.amberLight} tagColor={C.amber}>
                   <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                    {[["glucosa_ayunas","Glucosa ayunas"],["hba1c","HbA1c (%)"],["acido_urico","Ác. Úrico"],["creatinina","Creatinina"]].map(function(arr){var k=arr[0],l=arr[1];return(
-                      <div key={k} style={{display:"flex",flexDirection:"column",gap:2,flex:1,minWidth:100}}>
+                    {[["glucosa_ayunas","Glucosa"],["hba1c","HbA1c"],["acido_urico","Ác.Úrico"],["creatinina","Creatinina"]].map(function(arr){var k=arr[0],l=arr[1];return(
+                      <div key={k} style={{display:"flex",flexDirection:"column",gap:2,flex:1,minWidth:90}}>
                         <label style={{fontSize:10,fontWeight:700,color:C.textSoft,textTransform:"uppercase"}}>{l}</label>
-                        <input type="number" value={dashForm[k]} onChange={function(e){updD(k,e.target.value);}} style={{border:"1px solid "+C.border,borderRadius:7,padding:"7px 8px",fontSize:13,background:C.grayLight,outline:"none",color:C.text,width:"100%",boxSizing:"border-box"}}/>
+                        <input type="number" value={dashF[k]} onChange={function(e){updD(k,e.target.value);}} style={{border:"1px solid "+C.border,borderRadius:7,padding:"7px 8px",fontSize:13,background:C.grayLight,outline:"none",color:C.text,width:"100%",boxSizing:"border-box"}}/>
                       </div>
                     );})}
                   </div>
                 </Card>
-
                 <Card title="Clasificación" icon="🏷" accent={C.redLight} tagColor={C.red}>
                   <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
-                    <Field label="Riesgo CV" value={dashForm.riesgo_cardiovascular} onChange={function(v){updD("riesgo_cardiovascular",v);}} type="select" options={["Bajo","Moderado","Alto","Muy alto"]}/>
-                    <Field label="Dx Metabólico" value={dashForm.dx_metabolico} onChange={function(v){updD("dx_metabolico",v);}} type="select" options={["Normal","Sobrepeso","Obesidad grado I","Obesidad grado II","Obesidad grado III","Síndrome metabólico","Diabetes mellitus tipo 2","Prediabetes","Hipertensión arterial","Dislipidemia mixta","Hipercolesterolemia","Hipertrigliceridemia","Hiperuricemia"]}/>
+                    <Field label="Riesgo CV" value={dashF.riesgo_cardiovascular} onChange={function(v){updD("riesgo_cardiovascular",v);}} type="select" options={["Bajo","Moderado","Alto","Muy alto"]}/>
+                    <Field label="Dx Metabólico" value={dashF.dx_metabolico} onChange={function(v){updD("dx_metabolico",v);}} type="select" options={["Normal","Sobrepeso","Obesidad grado I","Obesidad grado II","Obesidad grado III","Síndrome metabólico","DM tipo 2","Prediabetes","HTA","Dislipidemia mixta","Hipercolesterolemia","Hipertrigliceridemia","Hiperuricemia"]}/>
                   </div>
                 </Card>
-
                 <div style={{display:"flex",gap:8,justifyContent:"flex-end",paddingBottom:24}}>
-                  <button onClick={function(){setDashVista("dashboard");}} style={{background:C.grayLight,border:"1px solid "+C.border,borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer",color:C.text}}>← Cancelar</button>
-                  <Btn label="💾 Guardar consulta" onClick={guardarMetabolico} color={C.green}/>
+                  <button onClick={function(){setDashV("dashboard");}} style={{background:C.grayLight,border:"1px solid "+C.border,borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer",color:C.text}}>← Cancelar</button>
+                  <Btn label="💾 Guardar consulta" onClick={saveMet} color={C.green}/>
                 </div>
               </div>
             )}
@@ -935,107 +1086,90 @@ function App(){
 
         {/* EPIDEMIOLOGÍA */}
         {vista==="epidemio"&&(function(){
-          var empresas2=[...new Set(historial.map(function(h){return h.paciente.empresa;}).filter(Boolean))];
-          var base=busqEmpresa?historial.filter(function(h){return h.paciente.empresa===busqEmpresa;}):historial;
-          var gruposData=GRUPOS_RIESGO.map(function(g){
-            var pacs=base.filter(function(h){return clasificarGrupo(h.antOcup&&h.antOcup.exposiciones?h.antOcup.exposiciones:"")===g.id;});
-            var aptCount={Apto:0,"Apto con restricciones":0,"No apto":0};
-            pacs.forEach(function(h){var a=h.aptitud?h.aptitud.resultado||"":"";if(a==="Apto")aptCount.Apto++;else if(a.includes("restricciones"))aptCount["Apto con restricciones"]++;else if(a.includes("No apto"))aptCount["No apto"]++;});
-            var dxMap={};pacs.forEach(function(h){var d=h.diagnostico?h.diagnostico.cie10:null;if(d)dxMap[d]=(dxMap[d]||0)+1;});
-            var dxTop=Object.entries(dxMap).sort(function(a,b){return b[1]-a[1];}).slice(0,3);
-            return Object.assign({},g,{count:pacs.length,aptCount:aptCount,dxTop:dxTop,pacs:pacs});
-          }).filter(function(g){return g.count>0||g.id==="sin_exposicion";});
-          var dxCount={};base.forEach(function(h){var d=h.diagnostico?h.diagnostico.cie10:null;if(d)dxCount[d]=(dxCount[d]||0)+1;});
-          var topDx=Object.entries(dxCount).sort(function(a,b){return b[1]-a[1];}).slice(0,8);
-          var aptCount={"Apto":0,"Apto con restricciones":0,"No apto temporal":0,"No apto permanente":0};
-          base.forEach(function(h){var a=h.aptitud?h.aptitud.resultado:null;if(a&&aptCount[a]!==undefined)aptCount[a]++;});
-          var icPendientes=historial.reduce(function(acc,h){return acc.concat((h.interconsultas||[]).filter(function(ic){return ic.estado==="Pendiente";}).map(function(ic){return Object.assign({},ic,{paciente:h.paciente.nombre,empresa:h.paciente.empresa,fecha:h.fecha});}));}, []);
+          var emp2=Array.from(new Set(hist.map(function(h){return h.paciente.empresa;}).filter(Boolean)));
+          var base=bEmp?hist.filter(function(h){return h.paciente.empresa===bEmp;}):hist;
+          var gData=GRUPOS.map(function(g){
+            var pacs=base.filter(function(h){return clasGrupo(h.antOcup&&h.antOcup.exposiciones?h.antOcup.exposiciones:"")===g.id;});
+            var ac={Apto:0,"Apto con restricciones":0,"No apto":0};
+            pacs.forEach(function(h){var a=h.aptitud?h.aptitud.resultado||"":"";if(a==="Apto")ac.Apto++;else if(a.includes("restricciones"))ac["Apto con restricciones"]++;else if(a.includes("No apto"))ac["No apto"]++;});
+            var dm={};pacs.forEach(function(h){var d=h.diagnostico?h.diagnostico.cie10:null;if(d)dm[d]=(dm[d]||0)+1;});
+            var dxT=Object.entries(dm).sort(function(a,b){return b[1]-a[1];}).slice(0,3);
+            return Object.assign({},g,{count:pacs.length,ac:ac,dxT:dxT,pacs:pacs});
+          }).filter(function(g){return g.count>0||g.id==="sin_exp";});
+          var dxM={};base.forEach(function(h){var d=h.diagnostico?h.diagnostico.cie10:null;if(d)dxM[d]=(dxM[d]||0)+1;});
+          var topDx=Object.entries(dxM).sort(function(a,b){return b[1]-a[1];}).slice(0,8);
+          var aptT={"Apto":0,"Apto con restricciones":0,"No apto temporal":0,"No apto permanente":0};
+          base.forEach(function(h){var a=h.aptitud?h.aptitud.resultado:null;if(a&&aptT[a]!==undefined)aptT[a]++;});
+          var icP=hist.reduce(function(acc,h){return acc.concat((h.interconsultas||[]).filter(function(ic){return ic.estado==="Pendiente";}).map(function(ic){return Object.assign({},ic,{pac:h.paciente.nombre,emp:h.paciente.empresa,fecha:h.fecha});}));;},[]);
           var hoy=new Date();
-          var vencidos=historial.filter(function(h){if(!h.fecha)return false;var f=new Date(h.fecha);f.setFullYear(f.getFullYear()+1);return f<hoy;});
-          var proximos=historial.filter(function(h){if(!h.fecha)return false;var f=new Date(h.fecha);f.setFullYear(f.getFullYear()+1);var dias=Math.floor((f-hoy)/(1000*60*60*24));return dias>=0&&dias<=30;});
-          var grupoSelData=epiGrupo?gruposData.find(function(g){return g.id===epiGrupo;}):null;
+          var venc=hist.filter(function(h){if(!h.fecha)return false;var f=new Date(h.fecha);f.setFullYear(f.getFullYear()+1);return f<hoy;});
+          var prox=hist.filter(function(h){if(!h.fecha)return false;var f=new Date(h.fecha);f.setFullYear(f.getFullYear()+1);var d=Math.floor((f-hoy)/(1000*60*60*24));return d>=0&&d<=30;});
+          var gSel=epiG?gData.find(function(g){return g.id===epiG;}):null;
           return(
             <div>
               <div style={{display:"flex",gap:10,marginBottom:16,alignItems:"center",flexWrap:"wrap"}}>
-                <select style={{border:"1px solid "+C.border,borderRadius:8,padding:"8px 12px",fontSize:13,background:C.white,color:C.text}} value={busqEmpresa} onChange={function(e){setBusqEmpresa(e.target.value);}}>
-                  <option value="">Todas las empresas</option>{empresas2.map(function(e){return <option key={e} value={e}>{e}</option>;})}
+                <select style={{border:"1px solid "+C.border,borderRadius:8,padding:"8px 12px",fontSize:13,background:C.white,color:C.text}} value={bEmp} onChange={function(e){setBEmp(e.target.value);}}>
+                  <option value="">Todas las empresas</option>{emp2.map(function(e){return<option key={e} value={e}>{e}</option>;})}
                 </select>
                 <span style={{fontSize:12,color:C.textSoft}}>{base.length} paciente(s)</span>
               </div>
               <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
-                {[{label:"Total",val:base.length,c:C.blue,bg:C.blueLight,icon:"👥"},{label:"Aptos",val:aptCount["Apto"],c:C.green,bg:C.greenLight,icon:"✅"},{label:"Restricciones",val:aptCount["Apto con restricciones"],c:C.amber,bg:C.amberLight,icon:"⚠"},{label:"No aptos",val:aptCount["No apto temporal"]+aptCount["No apto permanente"],c:C.red,bg:C.redLight,icon:"❌"},{label:"IC Pendientes",val:icPendientes.length,c:C.purple,bg:C.purpleLight,icon:"🔀"},{label:"Vencidos",val:vencidos.length,c:C.red,bg:C.redLight,icon:"📅"}].map(function(s){
-                  return(<div key={s.label} style={{flex:1,minWidth:90,background:s.bg,border:"1px solid "+s.c+"33",borderRadius:12,padding:"12px 10px",textAlign:"center"}}><div style={{fontSize:18}}>{s.icon}</div><div style={{fontSize:22,fontWeight:900,color:s.c,lineHeight:1}}>{s.val}</div><div style={{fontSize:10,color:s.c,fontWeight:700,marginTop:2}}>{s.label}</div></div>);
+                {[{l:"Total",v:base.length,c:C.blue,bg:C.blueLight,i:"👥"},{l:"Aptos",v:aptT["Apto"],c:C.green,bg:C.greenLight,i:"✅"},{l:"Restricciones",v:aptT["Apto con restricciones"],c:C.amber,bg:C.amberLight,i:"⚠"},{l:"No aptos",v:aptT["No apto temporal"]+aptT["No apto permanente"],c:C.red,bg:C.redLight,i:"❌"},{l:"IC Pend.",v:icP.length,c:C.purple,bg:C.purpleLight,i:"🔀"},{l:"Vencidos",v:venc.length,c:C.red,bg:C.redLight,i:"📅"}].map(function(s){
+                  return<div key={s.l} style={{flex:1,minWidth:90,background:s.bg,border:"1px solid "+s.c+"33",borderRadius:12,padding:"12px 10px",textAlign:"center"}}><div style={{fontSize:18}}>{s.i}</div><div style={{fontSize:22,fontWeight:900,color:s.c,lineHeight:1}}>{s.v}</div><div style={{fontSize:10,color:s.c,fontWeight:700,marginTop:2}}>{s.l}</div></div>;
                 })}
               </div>
-
-              <Card title="Vista por Grupo de Riesgo Ocupacional" icon="🏭" accent={C.amberLight} tagColor={C.amber} tag={gruposData.filter(function(g){return g.count>0;}).length+" grupos activos"}>
+              <Card title="Grupos de Riesgo Ocupacional" icon="🏭" accent={C.amberLight} tagColor={C.amber} tag={gData.filter(function(g){return g.count>0;}).length+" activos"}>
                 <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:14}}>
-                  {gruposData.map(function(g){return(
-                    <button key={g.id} onClick={function(){setEpiGrupo(epiGrupo===g.id?"":g.id);}} style={{flex:1,minWidth:100,borderRadius:10,padding:"10px 8px",border:"2px solid "+(epiGrupo===g.id?g.color:C.border),background:epiGrupo===g.id?g.color+"18":"white",cursor:"pointer",textAlign:"center"}}>
-                      <div style={{fontSize:20}}>{g.icon}</div>
-                      <div style={{fontSize:11,fontWeight:700,color:epiGrupo===g.id?g.color:C.text,marginTop:2}}>{g.label}</div>
-                      <div style={{fontSize:18,fontWeight:900,color:g.color,lineHeight:1.2}}>{g.count}</div>
-                      <div style={{fontSize:9,color:C.textSoft}}>trabajador(es)</div>
+                  {gData.map(function(g){return(
+                    <button key={g.id} onClick={function(){setEpiG(epiG===g.id?"":g.id);}} style={{flex:1,minWidth:90,borderRadius:10,padding:"10px 8px",border:"2px solid "+(epiG===g.id?g.color:C.border),background:epiG===g.id?g.color+"18":"white",cursor:"pointer",textAlign:"center"}}>
+                      <div style={{fontSize:18}}>{g.icon}</div>
+                      <div style={{fontSize:11,fontWeight:700,color:epiG===g.id?g.color:C.text,marginTop:2}}>{g.label}</div>
+                      <div style={{fontSize:18,fontWeight:900,color:g.color}}>{g.count}</div>
                     </button>
                   );})}
                 </div>
-                {grupoSelData&&(
-                  <div style={{background:grupoSelData.color+"10",border:"1px solid "+grupoSelData.color,borderRadius:12,padding:14}}>
-                    <div style={{fontWeight:800,fontSize:14,color:grupoSelData.color,marginBottom:10}}>{grupoSelData.icon} {grupoSelData.label} — {grupoSelData.count} trabajador(es)</div>
-                    <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:10}}>
-                      {[["Aptos",grupoSelData.aptCount.Apto,C.green],["Restricciones",grupoSelData.aptCount["Apto con restricciones"],C.amber],["No aptos",grupoSelData.aptCount["No apto"],C.red]].map(function(arr){var l=arr[0],v=arr[1],c=arr[2];return(
-                        <div key={l} style={{flex:1,minWidth:80,background:"white",borderRadius:8,padding:8,textAlign:"center",border:"1px solid "+c+"33"}}><div style={{fontSize:18,fontWeight:900,color:c}}>{v}</div><div style={{fontSize:10,color:C.textSoft}}>{l}</div></div>
-                      );})}
+                {gSel&&(
+                  <div style={{background:gSel.color+"10",border:"1px solid "+gSel.color,borderRadius:12,padding:14}}>
+                    <div style={{fontWeight:800,fontSize:14,color:gSel.color,marginBottom:10}}>{gSel.icon} {gSel.label} — {gSel.count} trabajador(es)</div>
+                    <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:10}}>
+                      {[["Aptos",gSel.ac.Apto,C.green],["Restricciones",gSel.ac["Apto con restricciones"],C.amber],["No aptos",gSel.ac["No apto"],C.red]].map(function(arr){var l=arr[0],v=arr[1],c=arr[2];return<div key={l} style={{flex:1,minWidth:80,background:"white",borderRadius:8,padding:8,textAlign:"center",border:"1px solid "+c+"33"}}><div style={{fontSize:18,fontWeight:900,color:c}}>{v}</div><div style={{fontSize:10,color:C.textSoft}}>{l}</div></div>;;})}
                     </div>
-                    {grupoSelData.dxTop.length>0&&<div>{grupoSelData.dxTop.map(function(arr,i){var dx=arr[0],n=arr[1];return(<div key={i} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:"1px solid "+grupoSelData.color+"22"}}><span style={{fontSize:11}}>{dx}</span><span style={{fontSize:11,fontWeight:700,color:grupoSelData.color}}>{n}</span></div>);})}</div>}
+                    {gSel.dxT.length>0&&<div>{gSel.dxT.map(function(arr,i){var dx=arr[0],n=arr[1];return<div key={i} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:"1px solid "+gSel.color+"22"}}><span style={{fontSize:11}}>{dx}</span><span style={{fontSize:11,fontWeight:700,color:gSel.color}}>{n}</span></div>;})}</div>}
                     <div style={{marginTop:10,display:"flex",gap:6,flexWrap:"wrap"}}>
-                      {grupoSelData.pacs.map(function(h){return(<div key={h.id} onClick={function(){abrirHC(h);setVista("editor");}} style={{background:"white",border:"1px solid "+grupoSelData.color,borderRadius:7,padding:"4px 10px",fontSize:11,fontWeight:600,cursor:"pointer",color:grupoSelData.color}}>{h.paciente.nombre||h.paciente.dni||"—"}</div>);})}
+                      {gSel.pacs.map(function(h){return<div key={h.id} onClick={function(){abrirHC(h);setVista("editor");}} style={{background:"white",border:"1px solid "+gSel.color,borderRadius:7,padding:"4px 10px",fontSize:11,fontWeight:600,cursor:"pointer",color:gSel.color}}>{h.paciente.nombre||h.paciente.dni||"—"}</div>;;})}
                     </div>
                   </div>
                 )}
               </Card>
-
               <div style={{display:"flex",gap:14,flexWrap:"wrap"}}>
                 <div style={{flex:1,minWidth:260}}>
                   <Card title="Diagnósticos más frecuentes" icon="🏷" accent={C.blueLight} tagColor={C.blue} tag={"Top "+topDx.length}>
                     {topDx.length===0?<div style={{color:C.textSoft,fontSize:12,textAlign:"center"}}>Sin datos</div>
-                    :topDx.map(function(arr,i){var dx=arr[0],n=arr[1];return(<div key={i} style={{marginBottom:8}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:11,flex:1}}>{dx}</span><span style={{fontSize:11,fontWeight:700,color:C.blue,marginLeft:8}}>{n}</span></div><div style={{background:C.border,borderRadius:4,height:6}}><div style={{background:C.blue,borderRadius:4,height:6,width:((n/topDx[0][1])*100)+"%"}}/></div></div>);})}
+                    :topDx.map(function(arr,i){var dx=arr[0],n=arr[1];return<div key={i} style={{marginBottom:8}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:11,flex:1}}>{dx}</span><span style={{fontSize:11,fontWeight:700,color:C.blue,marginLeft:8}}>{n}</span></div><div style={{background:C.border,borderRadius:4,height:6}}><div style={{background:C.blue,borderRadius:4,height:6,width:((n/topDx[0][1])*100)+"%"}}/></div></div>;})}
                   </Card>
                 </div>
                 <div style={{flex:1,minWidth:260}}>
                   <Card title="Distribución de Aptitud" icon="✅" accent={C.greenLight} tagColor={C.green}>
-                    {Object.entries(aptCount).map(function(entry){var k=entry[0],v=entry[1];return(<div key={k} style={{marginBottom:8}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:11}}>{k}</span><span style={{fontSize:11,fontWeight:700,color:k==="Apto"?C.green:k.includes("restricciones")?C.amber:C.red}}>{v} ({base.length?((v/base.length)*100).toFixed(0):0}%)</span></div><div style={{background:C.border,borderRadius:4,height:6}}><div style={{background:k==="Apto"?C.green:k.includes("restricciones")?C.amber:C.red,borderRadius:4,height:6,width:base.length?((v/base.length)*100)+"%":"0%"}}/></div></div>);})}
+                    {Object.entries(aptT).map(function(e2){var k=e2[0],v=e2[1];return<div key={k} style={{marginBottom:8}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:11}}>{k}</span><span style={{fontSize:11,fontWeight:700,color:k==="Apto"?C.green:k.includes("restricciones")?C.amber:C.red}}>{v} ({base.length?((v/base.length)*100).toFixed(0):0}%)</span></div><div style={{background:C.border,borderRadius:4,height:6}}><div style={{background:k==="Apto"?C.green:k.includes("restricciones")?C.amber:C.red,borderRadius:4,height:6,width:base.length?((v/base.length)*100)+"%":"0%"}}/></div></div>;})}
                   </Card>
                 </div>
               </div>
-
-              {icPendientes.length>0&&(
-                <Card title="Interconsultas Pendientes" icon="🔀" accent={C.purpleLight} tagColor={C.purple} tag={icPendientes.length+" sin respuesta"}>
+              {icP.length>0&&(
+                <Card title="Interconsultas Pendientes" icon="🔀" accent={C.purpleLight} tagColor={C.purple} tag={icP.length+" sin respuesta"}>
                   <div style={{overflowX:"auto"}}>
                     <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
-                      <thead><tr style={{background:C.grayLight}}>{["Paciente","Empresa","Especialidad","Urgencia","Fecha HC"].map(function(h){return <th key={h} style={{padding:"7px 10px",textAlign:"left",fontWeight:700,color:C.textSoft,borderBottom:"1px solid "+C.border,whiteSpace:"nowrap"}}>{h}</th>;})}</tr></thead>
-                      <tbody>{icPendientes.map(function(ic,i){return(<tr key={i} style={{borderBottom:"1px solid "+C.border,background:i%2===0?C.white:C.grayLight}}>
-                        <td style={{padding:"7px 10px",fontWeight:600}}>{ic.paciente}</td>
-                        <td style={{padding:"7px 10px",color:C.textSoft}}>{ic.empresa||"—"}</td>
-                        <td style={{padding:"7px 10px"}}>{ic.especialidad}</td>
-                        <td style={{padding:"7px 10px"}}><span style={{background:ic.urgencia==="Urgente"?C.red:ic.urgencia==="Preferente"?C.amber:C.gray,color:"#fff",borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700}}>{ic.urgencia}</span></td>
-                        <td style={{padding:"7px 10px",color:C.textSoft}}>{ic.fecha}</td>
-                      </tr>);})}</tbody>
+                      <thead><tr style={{background:C.grayLight}}>{["Paciente","Empresa","Especialidad","Urgencia","Fecha"].map(function(h2){return<th key={h2} style={{padding:"7px 10px",textAlign:"left",fontWeight:700,color:C.textSoft,borderBottom:"1px solid "+C.border,whiteSpace:"nowrap"}}>{h2}</th>;})}</tr></thead>
+                      <tbody>{icP.map(function(ic,i){return<tr key={i} style={{borderBottom:"1px solid "+C.border,background:i%2===0?C.white:C.grayLight}}><td style={{padding:"7px 10px",fontWeight:600}}>{ic.pac}</td><td style={{padding:"7px 10px",color:C.textSoft}}>{ic.emp||"—"}</td><td style={{padding:"7px 10px"}}>{ic.especialidad}</td><td style={{padding:"7px 10px"}}><span style={{background:ic.urgencia==="Urgente"?C.red:ic.urgencia==="Preferente"?C.amber:C.gray,color:"#fff",borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700}}>{ic.urgencia}</span></td><td style={{padding:"7px 10px",color:C.textSoft}}>{ic.fecha}</td></tr>;})}</tbody>
                     </table>
                   </div>
                 </Card>
               )}
-
-              {(vencidos.length>0||proximos.length>0)&&(
-                <Card title="Alertas de Vencimiento" icon="📅" accent={C.redLight} tagColor={C.red} tag={(vencidos.length+proximos.length)+" alertas"}>
-                  {vencidos.concat(proximos.map(function(h){return Object.assign({},h,{_prox:true});})).map(function(h,i){
+              {(venc.length>0||prox.length>0)&&(
+                <Card title="Alertas de Vencimiento" icon="📅" accent={C.redLight} tagColor={C.red} tag={(venc.length+prox.length)+" alertas"}>
+                  {venc.map(function(h){return{h:h,prox:false};}).concat(prox.map(function(h){return{h:h,prox:true};})).map(function(item,i){
+                    var h=item.h,isProx=item.prox;
                     var f=new Date(h.fecha);f.setFullYear(f.getFullYear()+1);var dias=Math.floor((f-hoy)/(1000*60*60*24));
-                    return(<div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:"1px solid "+C.border}}>
-                      <span style={{fontSize:16}}>{h._prox?"🟡":"🔴"}</span>
-                      <div style={{flex:1}}><div style={{fontWeight:700,fontSize:13}}>{h.paciente.nombre}</div><div style={{fontSize:11,color:C.textSoft}}>{h.paciente.empresa||"—"}</div></div>
-                      <div style={{fontSize:11,fontWeight:700,color:h._prox?C.amber:C.red}}>{h._prox?"Vence en "+dias+" días":"Vencido hace "+Math.abs(dias)+" días"}</div>
-                      <button onClick={function(){abrirHC(h);}} style={{background:C.blueLight,border:"1px solid "+C.blue,color:C.blue,borderRadius:7,padding:"4px 9px",cursor:"pointer",fontSize:11,fontWeight:700}}>Ver HC</button>
-                    </div>);
+                    return<div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:"1px solid "+C.border}}><span style={{fontSize:16}}>{isProx?"🟡":"🔴"}</span><div style={{flex:1}}><div style={{fontWeight:700,fontSize:13}}>{h.paciente.nombre}</div><div style={{fontSize:11,color:C.textSoft}}>{h.paciente.empresa||"—"}</div></div><div style={{fontSize:11,fontWeight:700,color:isProx?C.amber:C.red}}>{isProx?"Vence en "+dias+" días":"Vencido hace "+Math.abs(dias)+" días"}</div><button onClick={function(){abrirHC(h);}} style={{background:C.blueLight,border:"1px solid "+C.blue,color:C.blue,borderRadius:7,padding:"4px 9px",cursor:"pointer",fontSize:11,fontWeight:700}}>Ver HC</button></div>;
                   })}
                 </Card>
               )}
